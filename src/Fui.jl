@@ -18,9 +18,9 @@ using Base: @kwdef
 
 # First include the base utility modules others depend on
 include("utils/safety.jl")
+include("debug/xdbg.jl")
 include("utils/file_ops.jl") 
 include("utils/compression.jl")
-include("debug/xdbg.jl")
 
 # Then include modules that depend on the utility modules
 include("config.jl")
@@ -34,9 +34,9 @@ include("net/autoupdate.jl")
 
 # Import sub-modules
 using .Safety
+using .XDebug
 using .FileOps
 using .Compression
-using .XDebug
 using .Config
 using .Parser
 using .Converter
