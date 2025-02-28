@@ -1,0 +1,24 @@
+﻿{
+    "Buttons": {
+        "Generate": "GenereazÄƒ .CAD/CSV",
+        "Cancel": "Anulare",
+        "Yes": "Da",
+        "No": "Nu",
+        "Load": "ÃŽncarcÄƒ",
+        "Save": "SalveazÄƒ",
+        "Add": "AdaugÄƒ",
+        "Del": "È˜terge",
+        "BOMSplitPath": "Clic pentru a selecta BOMSPLIT",
+        "PINSCadPath": "Clic pentru a selecta PINCAD"
+    },
+    "Labels": {
+        "BOMSplit": "Clic pentru a selecta BOM",
+        "PINSCad": "Clic pentru a selecta PINS",
+        "Client": "Client",
+        "ProgramName": "Nume Program"
+    },
+    "Errors": {
+        "FileMissing": "FiÈ™ier lipsÄƒ: %s",
+        "InvalidEntry": "Intrare invalidÄƒ detectatÄƒ"
+    }
+}

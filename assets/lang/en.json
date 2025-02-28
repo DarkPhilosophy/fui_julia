@@ -1,0 +1,24 @@
+﻿{
+    "Buttons": {
+        "Generate": "Generate .CAD/CSV",
+        "Cancel": "Cancel",
+        "Yes": "Yes",
+        "No": "No",
+        "Load": "Load",
+        "Save": "Save",
+        "Add": "Add",
+        "Del": "Del",
+        "BOMSplitPath": "Click to select BOMSPLIT",
+        "PINSCadPath": "Click to select PINCAD"
+    },
+    "Labels": {
+        "BOMSplit": "Click to select BOM",
+        "PINSCad": "Click to select PINS",
+        "Client": "Client",
+        "ProgramName": "Program Name"
+    },
+    "Errors": {
+        "FileMissing": "File missing: %s",
+        "InvalidEntry": "Invalid entry detected"
+    }
+}
