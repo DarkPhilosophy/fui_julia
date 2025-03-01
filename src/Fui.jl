@@ -50,11 +50,9 @@ using .Config
 using .Parser
 using .Converter
 
-# Import UIComponents directly to avoid naming conflicts
-import .UIComponents: create_labeled_component, create_client_component, create_progress_component
-
 # Import remaining modules
 using .AutoUpdate
+using .UIComponents
 using .UIAnimations
 using .UILayout
 using .UIHandlers
