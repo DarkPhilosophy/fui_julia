@@ -24,13 +24,13 @@ include("utils/compression.jl")
 
 # Then include modules that depend on the utility modules
 include("config.jl")
+include("net/autoupdate.jl")
 include("data/parser.jl")
 include("data/converter.jl")
 include("ui/components.jl")
+include("ui/animations.jl")
 include("ui/handlers.jl")
 include("ui/layout.jl")
-include("ui/animations.jl")
-include("net/autoupdate.jl")
 
 # Import sub-modules
 using .Safety
@@ -40,11 +40,11 @@ using .Compression
 using .Config
 using .Parser
 using .Converter
+using .AutoUpdate
 using .UIComponents
+using .UIAnimations
 using .UIHandlers
 using .UILayout
-using .UIAnimations
-using .AutoUpdate
 
 """
     run_application()

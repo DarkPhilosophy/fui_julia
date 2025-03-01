@@ -167,11 +167,8 @@ function open_email_client(email::String)
     
     # Use different commands based on platform
     if Sys.iswindows()
-        run(`cmd /c start mailto:$email?subject=$subject&body=$body`)
-    elseif Sys.isapple()
-        run(`open mailto:$email?subject=$subject&body=$body`)
-    else  # Linux and others
-        run(`xdg-open mailto:$email?subject=$subject&body=$body`)
+        # TO DO
+        #run(`cmd /c start mailto:$email?subject=$subject&body=$body`)
     end
     
     return true

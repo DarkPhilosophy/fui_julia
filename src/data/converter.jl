@@ -5,6 +5,7 @@ using ..Safety
 using ..Parser
 using ..FileOps
 using Base.Threads: @spawn, @threads
+using Printf: @sprintf
 
 export generate_csv, CSVResult
 
