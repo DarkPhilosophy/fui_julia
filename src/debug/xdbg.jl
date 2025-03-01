@@ -134,20 +134,25 @@ function get_caller()
         "file" => "unknown"
     )
     
-    # Walk up the stack to find the caller
-    for i in 4:10  # Skip immediate frames
-        frame = StackTraces.lookup(backtrace())[i]
-        func_name = string(frame.func)
-        
-        # Skip if this is a logging function
-        if startswith(func_name, "log_") || func_name == "with_timing"
-            continue
+    # Fixed implementation that doesn't use StackTraces.lookup on a vector
+    try
+        # Get stack trace - skip the frames related to logging
+        st = stacktrace()[4:end]
+        if !isempty(st)
+            for frame in st
+                func_name = string(frame.func)
+                
+                # Skip if this is a logging function
+                if !startswith(func_name, "log_") && func_name != "with_timing"
+                    caller["name"] = func_name
+                    caller["line"] = string(frame.line)
+                    caller["file"] = string(frame.file)
+                    break
+                end
+            end
         end
-        
-        caller["name"] = func_name
-        caller["line"] = string(frame.line)
-        caller["file"] = string(frame.file)
-        break
+    catch
+        # Fallback if stacktrace fails
     end
     
     return caller
@@ -232,10 +237,10 @@ log_critical(logger::Logger, message::String, category::LogCategory=GENERAL) =
 Log the current stack trace.
 """
 function log_backtrace(logger::Logger, category::LogCategory=ERRORS)
-    bt = backtrace()
+    bt = stacktrace()
     bt_strings = []
     
-    for (i, frame) in enumerate(StackTraces.lookup(bt))
+    for (i, frame) in enumerate(bt)
         if i <= 2  # Skip logging frames
             continue
         end

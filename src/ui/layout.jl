@@ -11,6 +11,10 @@ const ORIGINAL_WIDTH = 557
 const ORIGINAL_HEIGHT = 300
 const CONSOLE_WIDTH = 520
 
+# GTK constants - defined at module level
+const GTK_DEST_DEFAULT_ALL = 0x0007
+const GDK_ACTION_COPY = 1
+
 """
     UIComponents
 
@@ -62,6 +66,8 @@ Build the complete UI layout with components.
 - `UIComponents`: Structure containing all UI components
 """
 function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
+    println("Building UI interface")
+    
     # Create main window
     window = GtkWindow("MagicRay CAD/CSV Generator", ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
     
@@ -156,13 +162,25 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     }
     """
     
-    # Load CSS provider
-    sc = Gtk.GdkScreen()
-    push!(sc, css_provider, 600) # 600 is the priority
-    style_provider_add_provider_for_screen(sc, css_provider, 600)
+    # Fix for CSS styling - directly load CSS without using additional function
+    try
+        ccall((:gtk_css_provider_load_from_data, Gtk.libgtk), Bool,
+              (Ptr{Gtk.GObject}, Ptr{UInt8}, Cint, Ptr{Nothing}),
+              css_provider, css_data, length(css_data), C_NULL)
+        
+        # Get screen and apply provider
+        screen = ccall((:gdk_screen_get_default, Gtk.libgdk), Ptr{Nothing}, ())
+        if screen != C_NULL
+            ccall((:gtk_style_context_add_provider_for_screen, Gtk.libgtk), Nothing,
+                  (Ptr{Nothing}, Ptr{Gtk.GObject}, Cuint),
+                  screen, css_provider, 600)
+        end
+    catch css_error
+        println("Warning: Could not apply CSS: $css_error")
+    end
     
     # Set window ID for styling
-    Gtk.name!(window, "main-window")
+    GAccessor.name(window, "main-window")
     
     # Main container - vertical box
     box_main = GtkBox(:v)
@@ -171,7 +189,7 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Header area
     header_box = GtkBox(:h)
-    about_label = GtkLabel("by adalbertalexadru.ungureanu@flex.com")
+    about_label = GtkLabel("by adalbertalexandru.ungureanu@flex.com")
     GAccessor.name(about_label, "about-label")
     push!(header_box, about_label)
     
@@ -179,27 +197,31 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     push!(box_main, header_box)
     set_gtk_property!(header_box, :margin_bottom, 20)
     
+    # Get labels from language data safely
+    labels = get(language, "Labels", Dict{String, Any}())
+    buttons = get(language, "Buttons", Dict{String, Any}())
+    
     # Create component groups
     bomsplit = create_labeled_component(
-        get(language, "Labels", Dict())["BOMSplit"],
-        get(config, "Last", Dict())["BOMSplitPath"],
+        get(labels, "BOMSplit", "Select BOM File"),
+        get(get(config, "Last", Dict()), "BOMSplitPath", "Click to select BOM"),
         true
     )
     
     pincad = create_labeled_component(
-        get(language, "Labels", Dict())["PINSCad"],
-        get(config, "Last", Dict())["PINSCadPath"],
+        get(labels, "PINSCad", "Select PINS File"),
+        get(get(config, "Last", Dict()), "PINSCadPath", "Click to select PINS"),
         true
     )
     
     client = create_client_component(
-        get(language, "Labels", Dict())["Client"],
+        get(labels, "Client", "Client"),
         config
     )
     
     program = create_labeled_component(
-        get(language, "Labels", Dict())["ProgramName"],
-        get(config, "Last", Dict())["ProgramEntry"],
+        get(labels, "ProgramName", "Program name"),
+        get(get(config, "Last", Dict()), "ProgramEntry", ""),
         false
     )
     
@@ -216,7 +238,7 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     set_gtk_property!(program["container"], :margin_bottom, 20)
     
     # Generate button
-    generate_button = GtkButton(get(language, "Buttons", Dict())["Generate"])
+    generate_button = GtkButton(get(buttons, "Generate", "Generate .CAD/CSV"))
     GAccessor.name(generate_button, "generate-button")
     generate_box = GtkBox(:h)
     push!(generate_box, generate_button)
@@ -227,7 +249,7 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Progress bar area
     progress_bar = GtkProgressBar()
-    progress_bar.fraction = 0.0
+    set_gtk_property!(progress_bar, :fraction, 0.0)
     progress_label = GtkLabel("0%")
     
     progress_box = GtkBox(:h)
@@ -244,16 +266,41 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     language_combo = GtkComboBoxText()
     
     # Populate language options
-    for lang_file in readdir(joinpath(Config.get_assets_dir(), "lang"))
-        if endswith(lang_file, ".json")
-            lang_code = replace(lang_file, ".json" => "")
-            push!(language_combo, lang_code)
+    lang_dir = joinpath(Config.get_assets_dir(), "lang")
+    if isdir(lang_dir)
+        for lang_file in readdir(lang_dir)
+            if endswith(lang_file, ".json")
+                lang_code = replace(lang_file, ".json" => "")
+                push!(language_combo, lang_code)
+            end
         end
+    else
+        # Add default English if directory doesn't exist
+        push!(language_combo, "en")
     end
     
     # Set current language
     current_lang = Config.get_language_code(config)
-    language_combo.active_text = current_lang
+    
+    # Try to find and set current language
+    if length(language_combo) > 0
+        # Default to first language
+        set_gtk_property!(language_combo, :active, 0)
+        
+        # Try to set to specified language
+        try
+            items = language_combo.items
+            for (i, item) in enumerate(items)
+                if hasmethod(Gtk.bytestring, Tuple{typeof(GAccessor.text(item))}) && 
+                   Gtk.bytestring(GAccessor.text(item)) == current_lang
+                    set_gtk_property!(language_combo, :active, i-1)
+                    break
+                end
+            end
+        catch lang_err
+            println("Warning: Could not set active language: $lang_err")
+        end
+    end
     
     language_icon = GtkLabel("🌐")
     
@@ -315,10 +362,15 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
         Dict()
     )
     
-    # Make components draggable
-    set_drag_destination(bomsplit["input"])
-    set_drag_destination(pincad["input"])
+    # Try to set up drag and drop but handle missing functions
+    try
+        setup_file_drop(bomsplit["input"])
+        setup_file_drop(pincad["input"])
+    catch drag_err
+        println("Warning: Could not set up drag and drop: $drag_err")
+    end
     
+    println("UI interface built successfully")
     return components
 end
 
@@ -340,7 +392,7 @@ function create_labeled_component(label_text::String, input_text::String, is_but
     label = GtkLabel(label_text)
     input = GtkEntry()
     
-    input.text = input_text
+    set_gtk_property!(input, :text, input_text)
     if !is_button
         set_gtk_property!(input, :has_frame, true)
     else
@@ -386,16 +438,53 @@ function create_client_component(label_text::String, config::Dict{String, Any})
     combo = GtkComboBoxText()
     
     # Populate client options
+    clients_list = String[]
+    
     if haskey(config, "Clients")
-        clients = split(config["Clients"], ",")
-        for client in clients
-            push!(combo, client)
+        clients_str = get(config, "Clients", "")
+        if clients_str isa String && !isempty(clients_str)
+            clients_list = split(clients_str, ",")
+        elseif clients_str isa Vector
+            for client in clients_str
+                push!(clients_list, string(client))
+            end
         end
     end
     
-    # Set active client
-    if haskey(config, "Last") && haskey(config["Last"], "OptionClient")
-        combo.active_text = config["Last"]["OptionClient"]
+    # Ensure at least one default client if list is empty
+    if isempty(clients_list)
+        push!(clients_list, "DEFAULT")
+    end
+    
+    # Add all clients to the combobox
+    for client in clients_list
+        push!(combo, client)
+    end
+    
+    # Set active client if available
+    if length(combo) > 0
+        # Default to first client
+        set_gtk_property!(combo, :active, 0)
+        
+        # Try to set to specified client from config
+        if haskey(config, "Last") && haskey(config["Last"], "OptionClient")
+            option_client = config["Last"]["OptionClient"]
+            if !isempty(option_client)
+                # Try to find and set this client
+                try
+                    items = combo.items
+                    for (i, item) in enumerate(items)
+                        if hasmethod(Gtk.bytestring, Tuple{typeof(GAccessor.text(item))}) && 
+                           Gtk.bytestring(GAccessor.text(item)) == option_client
+                            set_gtk_property!(combo, :active, i-1)
+                            break
+                        end
+                    end
+                catch client_err
+                    println("Warning: Could not set active client: $client_err")
+                end
+            end
+        end
     end
     
     remove_button = GtkButton("✖ Del")
@@ -428,32 +517,65 @@ function create_client_component(label_text::String, config::Dict{String, Any})
 end
 
 """
-    set_drag_destination(widget::GtkWidget)
+    setup_file_drop(widget)
 
-Make a widget a valid drag destination for files.
+Set up basic drag and drop functionality for files that's compatible with Gtk 1.3.0
 """
-function set_drag_destination(widget)
-    # GTK3 drag and drop setup
-    target_entries = [Gtk.GtkTargetEntry("text/uri-list", 0, 0)]
-    targets = Gtk.GtkTargetList(target_entries)
-    Gtk.drag_dest_set(widget, Gtk.GConstants.GtkDestDefaults.ALL, target_entries, 
-                     Gtk.GConstants.GdkDragAction.COPY)
-
+function setup_file_drop(widget)
+    # Check if gtk_drag_dest_set is available before using it
+    if Gtk.libgtk === C_NULL
+        error("GTK library not loaded")
+    end
+    
+    # Set up widget as drag destination with fallback approach
+    # First try to use basic drag_dest_set
+    ccall((:gtk_drag_dest_set, Gtk.libgtk), Nothing,
+         (Ptr{Gtk.GObject}, Cuint, Ptr{Nothing}, Cint, Cuint),
+         widget, GTK_DEST_DEFAULT_ALL, C_NULL, 0, GDK_ACTION_COPY)
+    
     # Connect to the drag-data-received signal
     signal_connect(widget, "drag-data-received") do widget, context, x, y, data, info, time
-        uris = split(unsafe_string(convert(Ptr{UInt8}, data.data)), "\r\n")
-        if length(uris) > 0
-            uri = uris[1]
-            # Convert URI to file path
-            if startswith(uri, "file://")
-                path = uri[8:end]
-                # On Windows, convert /C:/path to C:/path
-                if Sys.iswindows() && startswith(path, "/")
-                    path = path[2:end]
+        try
+            # Try to get the data from the selection data
+            data_type = ccall((:gtk_selection_data_get_data_type, Gtk.libgtk),
+                             Cuint, (Ptr{Gtk.GObject},), data)
+                             
+            data_ptr = ccall((:gtk_selection_data_get_data, Gtk.libgtk),
+                            Ptr{UInt8}, (Ptr{Gtk.GObject},), data)
+                            
+            data_length = ccall((:gtk_selection_data_get_length, Gtk.libgtk),
+                               Cint, (Ptr{Gtk.GObject},), data)
+                               
+            if data_ptr != C_NULL && data_length > 0
+                # Try to convert to string
+                raw_data = unsafe_string(data_ptr, data_length)
+                
+                # Try to find a file URI
+                for line in split(raw_data, r"\r?\n")
+                    if startswith(line, "file://")
+                        # Convert URI to file path
+                        path = line[8:end]
+                        
+                        # On Windows, convert /C:/path to C:/path
+                        if Sys.iswindows() && startswith(path, "/")
+                            path = path[2:end]
+                        end
+                        
+                        # Update the widget text
+                        set_gtk_property!(widget, :text, path)
+                        break
+                    end
                 end
-                set_gtk_property!(widget, :text, path)
             end
+        catch e
+            println("Error processing drag data: $e")
         end
+        
+        # Complete the drag operation
+        ccall((:gtk_drag_finish, Gtk.libgtk), Nothing,
+             (Ptr{Gtk.GObject}, Cint, Cint, Culong),
+             context, true, false, time)
+             
         return nothing
     end
 end

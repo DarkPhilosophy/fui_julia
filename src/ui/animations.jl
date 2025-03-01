@@ -28,16 +28,24 @@ function fade_in(widget, duration::Float64=0.5)
     opacity_step = 1.0 / frames
     
     # Animation timer
-    timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
-        current_opacity = get_gtk_property(widget, :opacity, Float64)
-        
-        if current_opacity >= 1.0
-            set_gtk_property!(widget, :opacity, 1.0)
-            return false  # Stop timer
+    timer_id = nothing
+    try
+        timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
+            current_opacity = get_gtk_property(widget, :opacity, Float64)
+            
+            if current_opacity >= 1.0
+                set_gtk_property!(widget, :opacity, 1.0)
+                return false  # Stop timer
+            end
+            
+            set_gtk_property!(widget, :opacity, min(current_opacity + opacity_step, 1.0))
+            return true  # Continue timer
         end
-        
-        set_gtk_property!(widget, :opacity, min(current_opacity + opacity_step, 1.0))
-        return true  # Continue timer
+    catch e
+        println("Error in fade_in animation: $e")
+        # Make sure widget is visible even if animation fails
+        set_gtk_property!(widget, :opacity, 1.0)
+        set_gtk_property!(widget, :visible, true)
     end
     
     return timer_id
@@ -64,25 +72,34 @@ function fade_out(widget, duration::Float64=0.5, remove::Bool=false)
     opacity_step = 1.0 / frames
     
     # Animation timer
-    timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
-        current_opacity = get_gtk_property(widget, :opacity, Float64)
-        
-        if current_opacity <= 0.0
-            set_gtk_property!(widget, :opacity, 0.0)
-            set_gtk_property!(widget, :visible, false)
+    timer_id = nothing
+    try
+        timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
+            current_opacity = get_gtk_property(widget, :opacity, Float64)
             
-            if remove
-                parent = get_gtk_property(widget, :parent, GtkWidget)
-                if parent !== nothing
-                    Gtk.G_.remove(parent, widget)
+            if current_opacity <= 0.0
+                set_gtk_property!(widget, :opacity, 0.0)
+                set_gtk_property!(widget, :visible, false)
+                
+                if remove
+                    parent = get_gtk_property(widget, :parent, Gtk.GtkWidget)
+                    if parent !== nothing
+                        Gtk.G_.remove(parent, widget)
+                    end
                 end
+                
+                return false  # Stop timer
             end
             
-            return false  # Stop timer
+            set_gtk_property!(widget, :opacity, max(current_opacity - opacity_step, 0.0))
+            return true  # Continue timer
         end
-        
-        set_gtk_property!(widget, :opacity, max(current_opacity - opacity_step, 0.0))
-        return true  # Continue timer
+    catch e
+        println("Error in fade_out animation: $e")
+        # Ensure widget state is correct even if animation fails
+        if remove
+            set_gtk_property!(widget, :visible, false)
+        end
     end
     
     return timer_id
@@ -119,39 +136,56 @@ function pulse(widget, color1::String, color2::String, duration::Float64=1.0, cy
     }
     """
     
-    # Apply CSS
-    sc = Gtk.GdkScreen()
-    push!(sc, css_provider, 700)  # High priority
+    # Apply CSS directly to ensure compatibility with Gtk 1.3.0
+    try
+        ccall((:gtk_css_provider_load_from_data, Gtk.libgtk), Bool,
+              (Ptr{Gtk.GObject}, Ptr{UInt8}, Cint, Ptr{Nothing}),
+              css_provider, css_data, length(css_data), C_NULL)
+        
+        # Apply to widget context
+        style_context = Gtk.GAccessor.style_context(widget)
+        ccall((:gtk_style_context_add_provider, Gtk.libgtk), Nothing,
+             (Ptr{Gtk.GObject}, Ptr{Gtk.GObject}, Cuint),
+             style_context, css_provider, 700)  # High priority
+    catch css_err
+        println("Error applying CSS for pulse animation: $css_err")
+        return nothing
+    end
     
     # Animation state and cycle counter
     state = Ref(false)
     cycle_count = Ref(0)
     
     # Animation timer
-    timer_id = GLib.timeout_add(UInt32(duration * 1000)) do
-        if state[]
-            GAccessor.name(widget, "pulse-animation")
-        else
-            GAccessor.name(widget, "pulse-animation-alt")
-        end
-        
-        state[] = !state[]
-        
-        if cycles > 0
-            cycle_count[] += 0.5  # Each color change is half a cycle
-            
-            if cycle_count[] >= cycles
-                # Reset to original state
-                GAccessor.name(widget, original_class)
-                
-                # Remove CSS provider
-                Gtk.GLib.g_object_unref(css_provider)
-                
-                return false  # Stop timer
+    timer_id = nothing
+    try
+        timer_id = GLib.timeout_add(UInt32(duration * 1000)) do
+            if state[]
+                GAccessor.name(widget, "pulse-animation")
+            else
+                GAccessor.name(widget, "pulse-animation-alt")
             end
+            
+            state[] = !state[]
+            
+            if cycles > 0
+                cycle_count[] += 0.5  # Each color change is half a cycle
+                
+                if cycle_count[] >= cycles
+                    # Reset to original state
+                    GAccessor.name(widget, original_class)
+                    
+                    # Clean up
+                    return false  # Stop timer
+                end
+            end
+            
+            return true  # Continue timer
         end
-        
-        return true  # Continue timer
+    catch e
+        println("Error in pulse animation: $e")
+        # Restore original class if animation fails
+        GAccessor.name(widget, original_class)
     end
     
     return timer_id
@@ -160,8 +194,7 @@ end
 """
     initialize_audio()
 
-Initialize the audio subsystem. Uses LibSndFile if available,
-otherwise disables audio functionality.
+Initialize the audio subsystem.
 """
 function initialize_audio()
     try
@@ -171,7 +204,7 @@ function initialize_audio()
         AUDIO_ENABLED[] = true
     catch e
         AUDIO_ENABLED[] = false
-        @warn "Audio functionality disabled: $e"
+        println("Audio functionality disabled: $e")
     end
 end
 
@@ -196,10 +229,15 @@ function play_sound(name::String, volume::Float64=1.0)
         # Get cached sound or load it
         if !haskey(SOUND_CACHE, name)
             # In a real application, use the actual audio subsystem to load the sound
-            audio_dir = joinpath(dirname(dirname(dirname(@__FILE__))), "assets", "audio")
+            audio_dir = joinpath(dirname(dirname(@__FILE__)), "assets", "audio")
             path = joinpath(audio_dir, "$(name).wav")
             
             if !isfile(path)
+                # Create directory if it doesn't exist
+                if !isdir(audio_dir)
+                    mkpath(audio_dir)
+                end
+                
                 # For this implementation, we'll just log a warning
                 @warn "Sound file not found: $path"
                 return nothing
@@ -217,7 +255,7 @@ function play_sound(name::String, volume::Float64=1.0)
         
         return sound
     catch e
-        @warn "Failed to play sound '$name': $e"
+        println("Failed to play sound '$name': $e")
         return nothing
     end
 end
@@ -239,7 +277,7 @@ function stop_sound(sound::Any)
         # In a real implementation with a proper audio system:
         # sound["stream"].stop()
     catch e
-        @warn "Failed to stop sound: $e"
+        println("Failed to stop sound: $e")
     end
 end
 
