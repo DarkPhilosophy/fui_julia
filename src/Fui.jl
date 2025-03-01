@@ -160,8 +160,8 @@ function run_application()
             XDebug.log_warning(logger, "Could not play startup sound: $sound_error")
         end
         
-        # Check for updates in background
-        @spawn begin
+        #! PAUSE Check for updates in background
+        #=@spawn begin
             try
                 sleep(2) # Give the UI time to initialize
                 AutoUpdate.check_for_updates(config, ui_components, logger)
@@ -169,7 +169,7 @@ function run_application()
                 XDebug.log_error(logger, "Error in update check: $e")
                 XDebug.log_backtrace(logger)
             end
-        end
+        end=#
         
         # Show main window with fade-in animation
         main_window = ui_components.window
