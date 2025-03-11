@@ -7,11 +7,11 @@ using Base.Threads: @spawn
 using ..XDebug
 using ..Parser
 using ..Converter
-using ..UIAnimations
+import ..UIAnimations as Animations  # Import as Animations
 using ..Config
 using ..FileOps
 using ..Safety
-using ..AutoUpdate
+import ..AutoUpdate as Update  # Import as Update instead of using directly
 
 # Event debouncing machinery
 mutable struct DebounceState
@@ -83,16 +83,6 @@ function setup_event_handlers(components, config, language, logger)
     XDebug.log_info(logger, "Setting up UI event handlers", XDebug.UI)
     
     # Console toggle button handler
-    signal_connect(components.console["button"], "clicked") do widget
-        # Debounce and match the Lua onClick behavior
-        debounce(() -> begin
-            # Play sound first as in Lua version
-            UIAnimations.play_sound("interface-click")
-            toggle_console(components)
-        end, "console_toggle", 0.5)
-    end
-
-    # Console toggle button handler
     console_button = components.console["button"]
     signal_connect(console_button, "clicked") do widget
         debounce(() -> toggle_console(components), "console_toggle", 0.5)
@@ -101,7 +91,7 @@ function setup_event_handlers(components, config, language, logger)
     # About label handler (email link)
     about_label = components.about_label
     signal_connect(about_label, "button-press-event") do widget, event
-        debounce(() -> open_email_client("adalbertalexadru.ungureanu@flex.com"), "email_client", 1.0)
+        debounce(() -> open_email_client("adalbertalexandru.ungureanu@flex.com"), "email_client", 1.0)
     end
     
     # Language selection handler
@@ -176,10 +166,13 @@ function open_email_client(email::String)
     body = ""
     
     # Use different commands based on platform
-    if Sys.iswindows()
-        # TO DO
-        #run(`cmd /c start mailto:$email?subject=$subject&body=$body`)
-    end
+    #=if Sys.iswindows()
+        run(`cmd /c start mailto:$email?subject=$subject&body=$body`)
+    elseif Sys.isapple()
+        run(`open mailto:$email?subject=$subject&body=$body`)
+    else  # Linux and others
+        run(`xdg-open mailto:$email?subject=$subject&body=$body`)
+    end=#
     
     return true
 end
@@ -214,7 +207,7 @@ function handle_language_change(widget, components, config, logger)
     config["Language"] = "assets/lang/$lang_code.json"
     language = Config.load_language(lang_code)
     
-    if language === nothing
+    if language === nothing || isempty(language)
         XDebug.log_warning(logger, "Failed to load language: $lang_code", XDebug.UI)
         return false
     end
@@ -269,7 +262,7 @@ function update_ui_with_language(components, language, logger)
                 "➕ " * get(get(language, "Buttons", Dict()), "Add", "Add"))
             
             # Play feedback sound
-            UIAnimations.play_sound("interface-change")
+            Animations.play_sound("interface-change")
         end,
         (err) -> begin
             XDebug.log_error(logger, "Error updating UI language: $err", XDebug.UI)
@@ -338,7 +331,7 @@ function select_file(widget, title, parent_window, logger)
         set_gtk_property!(widget, :text, file_path)
         
         # Play sound feedback
-        UIAnimations.play_sound("interface-click")
+        Animations.play_sound("interface-click")
     end
     
     destroy(dialog)
@@ -412,7 +405,7 @@ function add_client(components, config, logger)
         set_gtk_property!(add_entry, :text, "")
         
         # Play sound feedback
-        UIAnimations.play_sound("interface-add")
+        Animations.play_sound("interface-add")
     end
     
     return true
@@ -469,7 +462,7 @@ function remove_client(components, config, logger)
         set_gtk_property!(select_box, :active, new_idx)
         
         # Play sound feedback
-        UIAnimations.play_sound("interface-remove")
+        Animations.play_sound("interface-remove")
     end
     
     return true
@@ -484,7 +477,7 @@ function handle_generate_click(components, config, logger)
     XDebug.log_info(logger, "Generate button clicked", XDebug.UI)
     
     # Play click sound
-    UIAnimations.play_sound("interface-click")
+    Animations.play_sound("interface-click")
     
     # Validate program name
     program_name = get_gtk_property(components.program["input"], :text, String)
@@ -679,7 +672,7 @@ function process_files(components, bom_file, pins_file, client, program_name, lo
     update_progress_bar(components, 100, "Processing completed", 0x097969)
     
     # Play completion sound
-    UIAnimations.play_sound("complete")
+    Animations.play_sound("complete")
     
     XDebug.log_info(logger, "Processing completed successfully", XDebug.DATA_PROC)
     

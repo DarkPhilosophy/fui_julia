@@ -25,23 +25,28 @@ function create_labeled_component(label_text::String, input_text::String, is_but
     input = GtkEntry()
     
     # Set properties
-    set_gtk_property!(input, :text, input_text)
+    if input_text !== nothing
+        GAccessor.text(input, string(input_text))
+    end
     
     if is_button
-        set_gtk_property!(input, :has_frame, false)
-        set_gtk_property!(input, :editable, false)
+        GAccessor.has_frame(input, false)
+        GAccessor.editable(input, false)
         GAccessor.name(input, "file-button")
     else
-        set_gtk_property!(input, :has_frame, true)
+        GAccessor.has_frame(input, true)
     end
     
     # Layout
     push!(container, label)
     push!(container, input)
-    set_gtk_property!(input, :hexpand, true)
-    set_gtk_property!(input, :margin_start, 10)
     
-    return Dict(
+    # Set expansion and margins
+    GAccessor.hexpand(label, false)
+    GAccessor.hexpand(input, true)
+    GAccessor.margin_start(input, 10)
+    
+    return Dict{String, Any}(
         "container" => container,
         "label" => label,
         "input" => input
@@ -68,7 +73,7 @@ function create_client_component(label_text::String, clients::Vector{String}=Str
     
     # Create components
     label = GtkLabel(label_text)
-    combo = GtkComboBoxText()
+    combo = GtkComboBoxText(false)  # Not editable
     remove_button = GtkButton("✖ Del")
     add_entry = GtkEntry()
     add_button = GtkButton("➕ Add")
@@ -77,21 +82,22 @@ function create_client_component(label_text::String, clients::Vector{String}=Str
     GAccessor.name(remove_button, "small-button")
     GAccessor.name(add_button, "small-button")
     
-    # Populate client options
-    for client in clients
+    # Populate client options - convert clients to array of strings if needed
+    client_array = isa(clients, String) ? split(clients, ",") : clients
+    for client in client_array
         push!(combo, client)
     end
     
     # Set active client if provided
-    if !isempty(selected) && selected in clients
-        for (i, client) in enumerate(clients)
+    if !isempty(selected) && (selected in client_array)
+        for (i, client) in enumerate(client_array)
             if client == selected
-                set_gtk_property!(combo, :active, i - 1)
+                combo.active = i - 1
                 break
             end
         end
-    elseif !isempty(clients)
-        set_gtk_property!(combo, :active, 0)  # Select first by default
+    elseif !isempty(client_array)
+        combo.active = 0  # Select first by default
     end
     
     # Layout components
@@ -102,13 +108,13 @@ function create_client_component(label_text::String, clients::Vector{String}=Str
     push!(container, add_button)
     
     # Set margins and expansion
-    set_gtk_property!(combo, :margin_start, 10)
-    set_gtk_property!(remove_button, :margin_start, 5)
-    set_gtk_property!(add_entry, :margin_start, 5)
-    set_gtk_property!(add_button, :margin_start, 5)
-    set_gtk_property!(add_entry, :hexpand, true)
+    GAccessor.margin_start(combo, 10)
+    GAccessor.margin_start(remove_button, 5)
+    GAccessor.margin_start(add_entry, 5)
+    GAccessor.margin_start(add_button, 5)
+    GAccessor.hexpand(add_entry, true)
     
-    return Dict(
+    return Dict{String, Any}(
         "container" => container,
         "label" => label,
         "selectBox" => combo,
@@ -132,7 +138,7 @@ function create_progress_component()
     
     # Create progress bar
     progress_bar = GtkProgressBar()
-    set_gtk_property!(progress_bar, :fraction, 0.0)
+    GAccessor.fraction(progress_bar, 0.0)
     
     # Create label
     progress_label = GtkLabel("0%")
@@ -141,10 +147,12 @@ function create_progress_component()
     # Layout
     push!(container, progress_bar)
     push!(container, progress_label)
-    set_gtk_property!(progress_bar, :hexpand, true)
-    set_gtk_property!(progress_label, :margin_start, 10)
     
-    return Dict(
+    # Set expansion and margins
+    GAccessor.hexpand(progress_bar, true)
+    GAccessor.margin_start(progress_label, 10)
+    
+    return Dict{String, Any}(
         "container" => container,
         "progress_bar" => progress_bar,
         "label" => progress_label
@@ -171,7 +179,7 @@ function create_language_selector(available_languages::Vector{String}, current_l
     # Create components
     label = GtkLabel("Language:")
     icon = GtkLabel("🌐")
-    combo = GtkComboBoxText()
+    combo = GtkComboBoxText(false)  # Not editable
     
     # Populate language options
     for lang in available_languages
@@ -179,15 +187,11 @@ function create_language_selector(available_languages::Vector{String}, current_l
     end
     
     # Set current language
-    if !isempty(current_language) && current_language in available_languages
-        for (i, lang) in enumerate(available_languages)
-            if lang == current_language
-                set_gtk_property!(combo, :active, i - 1)
-                break
-            end
-        end
+    current_idx = findfirst(==(current_language), available_languages)
+    if current_idx !== nothing
+        combo.active = current_idx - 1
     elseif !isempty(available_languages)
-        set_gtk_property!(combo, :active, 0)  # Select first by default
+        combo.active = 0  # Select first by default
     end
     
     # Layout
@@ -196,10 +200,10 @@ function create_language_selector(available_languages::Vector{String}, current_l
     push!(container, combo)
     
     # Set margins
-    set_gtk_property!(icon, :margin_start, 5)
-    set_gtk_property!(combo, :margin_start, 5)
+    GAccessor.margin_start(icon, 5)
+    GAccessor.margin_start(combo, 5)
     
-    return Dict(
+    return Dict{String, Any}(
         "container" => container,
         "label" => label,
         "icon" => icon,
@@ -222,8 +226,8 @@ function create_debug_console()
     
     text_view = GtkTextView()
     GAccessor.name(text_view, "console-text")
-    set_gtk_property!(text_view, :editable, false)
-    set_gtk_property!(text_view, :cursor_visible, false)
+    GAccessor.editable(text_view, false)
+    GAccessor.cursor_visible(text_view, false)
     
     scroll = GtkScrolledWindow()
     push!(scroll, text_view)
@@ -233,21 +237,25 @@ function create_debug_console()
     
     header = GtkBox(:h)
     push!(header, label)
-    set_gtk_property!(label, :halign, 1)  # GTK_ALIGN_CENTER = 1
-    set_gtk_property!(label, :hexpand, true)
+    
+    # Center the label
+    GAccessor.halign(label, Gtk.GConstants.GtkAlign.CENTER)
+    GAccessor.hexpand(label, true)
     
     container = GtkBox(:v)
     push!(container, header)
     push!(container, scroll)
-    set_gtk_property!(scroll, :vexpand, true)
+    
+    # Make the scroll expandable
+    GAccessor.vexpand(scroll, true)
     
     # Initially hidden
-    set_gtk_property!(container, :visible, false)
+    GAccessor.visible(container, false)
     
     # Dev area for easter egg
     dev_area = GtkBox(:h)
     
-    return Dict(
+    return Dict{String, Any}(
         "button" => button,
         "text" => text_view,
         "scroll" => scroll,
@@ -291,15 +299,14 @@ Add a CSS class to a widget.
 - `class_name::String`: The CSS class to add
 """
 function add_css_class(widget, class_name::String)
-    # In GTK3, we use GAccessor.name to set a CSS class
-    # For multiple classes, we'd need to implement custom handling
-    current_class = get_gtk_property(widget, :name, String)
+    # For GTK3, we'll have to concatenate class names - not ideal but works
+    current_class = GAccessor.name(widget)
     if isempty(current_class)
         GAccessor.name(widget, class_name)
     else
         # If widget already has a class, append new one
         if !occursin(class_name, current_class)
-            GAccessor.name(widget, current_class * " " * class_name)
+            GAccessor.name(widget, string(current_class, " ", class_name))
         end
     end
 end
@@ -314,7 +321,7 @@ Remove a CSS class from a widget.
 - `class_name::String`: The CSS class to remove
 """
 function remove_css_class(widget, class_name::String)
-    current_class = get_gtk_property(widget, :name, String)
+    current_class = GAccessor.name(widget)
     if !isempty(current_class)
         # If the class is the only one
         if current_class == class_name
