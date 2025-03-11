@@ -184,7 +184,7 @@ function run_application()
         else
             XDebug.log_critical(logger, "Window handle is null, cannot start main loop")
             return 1
-        end
+        end 
         
         XDebug.log_info(logger, "Application closed normally")
         return 0

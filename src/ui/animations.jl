@@ -3,6 +3,7 @@
 export fade_in, fade_out, pulse, play_sound, stop_sound
 
 using Gtk
+import Gtk.GLib  # Explicitly import GLib
 
 # Sound system configuration
 const AUDIO_ENABLED = Ref(true)

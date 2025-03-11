@@ -6,6 +6,9 @@ using JSON3
 using ..Safety
 using ..FileOps
 
+const DATA_DIR = "data"  # Match Lua path
+const LANG_DIR = joinpath(DATA_DIR, "lang")
+
 # Default configuration
 const DEFAULT_CONFIG = Dict{String, Any}(
     "Last" => Dict{String, Any}(
@@ -57,12 +60,12 @@ Load the application configuration from a file.
 If the file doesn't exist, it creates a default configuration.
 
 # Arguments
-- `config_path::String`: Path to the configuration file (default: "config.ini")
+- `config_path::String`: Path to the configuration file (default: "fui.ini")
 
 # Returns
 - `Dict{String, Any}`: Configuration dictionary
 """
-function load_config(config_path::String="config.ini")
+function load_config(config_path::String="fui.ini")
     # Check if config file exists
     if !isfile(config_path)
         # Create default config
@@ -284,6 +287,11 @@ function load_language(lang_code::String)
     assets_dir = get_assets_dir()
     lang_dir = joinpath(assets_dir, "lang")
     lang_path = joinpath(lang_dir, "$(lang_code).json")
+
+    # Create directory if it doesn't exist (like Lua version does)
+    if !isdir(dirname(lang_path))
+        mkpath(dirname(lang_path))
+    end
     
     # Check if language directory exists, create if not
     if !isdir(lang_dir)
@@ -333,6 +341,7 @@ function load_language(lang_code::String)
             return deepcopy(DEFAULT_LANGUAGE)
         end
     )
+    return DATA_DIR
 end
 
 """

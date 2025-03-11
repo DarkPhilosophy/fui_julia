@@ -70,6 +70,16 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Create main window
     window = GtkWindow("MagicRay CAD/CSV Generator", ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
+    main_container = GtkBox(:v)  # Vertical box
+    set_gtk_property!(main_container, :spacing, 10)
+    set_gtk_property!(main_container, :margin, 10)
+    # Add the main container to the window
+    push!(window, main_container)  # This is the only widget directly added to window
+
+    # Now all other widgets should be added to main_container or its children
+    # For example:
+    header_box = GtkBox(:h)
+    push!(main_container, header_box)  # Add to main_container, not window
     
     # Apply CSS styling
     css_provider = GtkCssProvider()
@@ -177,6 +187,16 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
         end
     catch css_error
         println("Warning: Could not apply CSS: $css_error")
+    end
+    # Load CSS data
+    try
+        Gtk.GAccessor.style_context(window)
+        sc = Gtk.GdkScreen()
+        Gtk.G_.load_from_data(css_provider, css_data, length(css_data))
+        Gtk.StyleProvider(css_provider)
+        Gtk.AddProviderForScreen(sc, css_provider, 600)  # 600 is priority
+    catch e
+        @warn "Error loading CSS: $e"
     end
     
     # Set window ID for styling

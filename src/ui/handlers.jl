@@ -83,6 +83,16 @@ function setup_event_handlers(components, config, language, logger)
     XDebug.log_info(logger, "Setting up UI event handlers", XDebug.UI)
     
     # Console toggle button handler
+    signal_connect(components.console["button"], "clicked") do widget
+        # Debounce and match the Lua onClick behavior
+        debounce(() -> begin
+            # Play sound first as in Lua version
+            UIAnimations.play_sound("interface-click")
+            toggle_console(components)
+        end, "console_toggle", 0.5)
+    end
+
+    # Console toggle button handler
     console_button = components.console["button"]
     signal_connect(console_button, "clicked") do widget
         debounce(() -> toggle_console(components), "console_toggle", 0.5)
