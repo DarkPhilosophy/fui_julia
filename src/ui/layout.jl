@@ -160,22 +160,22 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Apply CSS to window - fixed for GTK3 in Julia
     GAccessor.name(window, "main-window")
-    Gtk.G_.provider_add_provider_for_screen(
-        Gtk.GdkScreen(),
-        css_provider,
-        600  # Priority
-    )
-    
-    # Load CSS data - use the correct method for GTK3 in Julia
-    Gtk.G_.provider_load_from_data(css_provider, css_data, length(css_data))
-
-    # Apply the CSS provider to the screen
+    # Retrieve the default screen once
     screen = Gtk.GdkScreen()
-    push!(screen, css_provider, 600)  # Priority 600
-    
-    # Main container - vertical box
+
+    # Load CSS data into the provider
+    Gtk.GAccessor.load_data(css_provider, css_data)
+
+    # Add the CSS provider to the screen with application priority
+    Gtk.add_provider_for_screen(screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    # Create the main vertical box container
     box_main = GtkBox(:v)
+
+    # Add the box to the window
     push!(window, box_main)
+
+    # Set margin for the box
     GAccessor.margin(box_main, 10)
     
     # Header area
