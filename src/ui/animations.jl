@@ -9,70 +9,128 @@ const AUDIO_ENABLED = Ref(true)
 const SOUND_CACHE = Dict{String, Any}()
 
 """
+    direct_timeout_add(interval_ms::Integer, callback::Function)
+
+Direct replacement for Gtk.GLib.timeout_add using ccall.
+"""
+function direct_timeout_add(interval_ms::Integer, callback::Function)
+    # Create a callback wrapper that will be called by C
+    cb_ptr = @cfunction(
+        (data) -> begin
+            result = false
+            try
+                result = callback()::Bool
+            catch e
+                println("Error in timer callback: $e")
+            end
+            result::Bool
+        end,
+        Cint, (Ptr{Nothing},)
+    )
+    
+    # Call the GLib function directly
+    return ccall(
+        (:g_timeout_add, Gtk.libglib), 
+        Cuint, 
+        (Cuint, Ptr{Nothing}, Ptr{Nothing}),
+        Cuint(interval_ms), cb_ptr, C_NULL
+    )
+end
+
+"""
+    simple_timeout(interval_seconds::Number, callback::Function)
+
+Create a simple timer using Base.Timer for maximum compatibility.
+"""
+function simple_timeout(interval_seconds::Number, callback::Function)
+    # Create a timer
+    timer = Timer(interval_seconds)
+    
+    # Add callback to wait and execute
+    @async begin
+        try
+            while true
+                wait(timer)
+                result = callback()
+                if result == false
+                    close(timer)
+                    break
+                end
+            end
+        catch e
+            if e isa EOFError
+                # Timer was closed
+            else
+                println("Timer error: $e")
+            end
+        end
+    end
+    
+    return timer
+end
+
+"""
     fade_in(widget, duration::Float64=0.5)
 
 Animate a widget fading in from invisible to visible.
-
-# Arguments
-- `widget`: The widget to animate
-- `duration::Float64`: Animation duration in seconds (default: 0.5)
 """
 function fade_in(widget, duration::Float64=0.5)
     # Set initial opacity to 0
-    set_gtk_property!(widget, :opacity, 0.0)
-    set_gtk_property!(widget, :visible, true)
+    Gtk.set_gtk_property!(widget, :opacity, 0.0)
+    Gtk.set_gtk_property!(widget, :visible, true)
     
     # Create animation
-    frames = 30
+    frames = 20
     interval = duration / frames
     opacity_step = 1.0 / frames
     
-    # Animation timer
-    timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
-        current_opacity = get_gtk_property(widget, :opacity, Float64)
+    # Animation state
+    current_opacity = Ref(0.0)
+    
+    # Create a timer - using our simple implementation
+    timer = simple_timeout(interval) do
+        current_opacity[] += opacity_step
         
-        if current_opacity >= 1.0
-            set_gtk_property!(widget, :opacity, 1.0)
+        if current_opacity[] >= 1.0
+            Gtk.set_gtk_property!(widget, :opacity, 1.0)
             return false  # Stop timer
         end
         
-        set_gtk_property!(widget, :opacity, min(current_opacity + opacity_step, 1.0))
+        Gtk.set_gtk_property!(widget, :opacity, current_opacity[])
         return true  # Continue timer
     end
     
-    return timer_id
+    return timer
 end
 
 """
     fade_out(widget, duration::Float64=0.5, remove::Bool=false)
 
 Animate a widget fading out from visible to invisible.
-
-# Arguments
-- `widget`: The widget to animate
-- `duration::Float64`: Animation duration in seconds (default: 0.5)
-- `remove::Bool`: Whether to remove the widget after fading (default: false)
 """
 function fade_out(widget, duration::Float64=0.5, remove::Bool=false)
     # Ensure widget is visible
-    set_gtk_property!(widget, :visible, true)
-    set_gtk_property!(widget, :opacity, 1.0)
+    Gtk.set_gtk_property!(widget, :visible, true)
+    Gtk.set_gtk_property!(widget, :opacity, 1.0)
     
     # Create animation
-    frames = 30
+    frames = 20
     interval = duration / frames
     opacity_step = 1.0 / frames
     
-    # Animation timer
-    timer_id = GLib.timeout_add(UInt32(interval * 1000)) do
-        current_opacity = get_gtk_property(widget, :opacity, Float64)
+    # Animation state
+    current_opacity = Ref(1.0)
+    
+    # Create a timer - using our simple implementation
+    timer = simple_timeout(interval) do
+        current_opacity[] -= opacity_step
         
-        if current_opacity <= 0.0
-            set_gtk_property!(widget, :opacity, 0.0)
-            set_gtk_property!(widget, :visible, false)
+        if current_opacity[] <= 0.0
+            Gtk.set_gtk_property!(widget, :opacity, 0.0)
+            Gtk.set_gtk_property!(widget, :visible, false)
             
             if remove
-                parent = get_gtk_property(widget, :parent, GtkWidget)
+                parent = Gtk.get_gtk_property(widget, :parent, Gtk.GtkWidget)
                 if parent !== nothing
                     Gtk.G_.remove(parent, widget)
                 end
@@ -81,83 +139,83 @@ function fade_out(widget, duration::Float64=0.5, remove::Bool=false)
             return false  # Stop timer
         end
         
-        set_gtk_property!(widget, :opacity, max(current_opacity - opacity_step, 0.0))
+        Gtk.set_gtk_property!(widget, :opacity, current_opacity[])
         return true  # Continue timer
     end
     
-    return timer_id
+    return timer
 end
 
 """
     pulse(widget, color1::String, color2::String, duration::Float64=1.0, cycles::Int=1)
 
 Create a pulsing animation between two colors for a widget.
-
-# Arguments
-- `widget`: The widget to animate
-- `color1::String`: Starting CSS color
-- `color2::String`: Ending CSS color
-- `duration::Float64`: Duration of one cycle in seconds (default: 1.0)
-- `cycles::Int`: Number of cycles to run (default: 1, 0 for infinite)
 """
 function pulse(widget, color1::String, color2::String, duration::Float64=1.0, cycles::Int=1)
-    # Store original style to restore later
-    original_style = widget.name
+    # Store original color/style
+    original_name = Gtk.get_gtk_property(widget, :name, String)
     
-    # Create CSS provider with animation
+    # Create CSS provider
     css_provider = GtkCssProvider()
     css_data = """
-    .pulse-animation {
+    .pulse-animation-1 {
         background-color: $(color1);
     }
     
-    .pulse-animation-alt {
+    .pulse-animation-2 {
         background-color: $(color2);
     }
     """
     
-    # Apply CSS - for GTK3
-    Gtk.G_.provider_load_from_data(css_provider, css_data, -1)
+    # Apply CSS - direct method for maximum compatibility
+    try
+        ccall((:gtk_css_provider_load_from_data, Gtk.libgtk), Bool, 
+              (Ptr{Gtk.GObject}, Ptr{UInt8}, Csize_t, Ptr{Nothing}), 
+              css_provider, css_data, length(css_data), C_NULL)
+        
+        # Get style context and apply
+        style = ccall((:gtk_widget_get_style_context, Gtk.libgtk), Ptr{Nothing}, 
+                     (Ptr{Gtk.GObject},), widget)
+                     
+        ccall((:gtk_style_context_add_provider, Gtk.libgtk), Cvoid,
+              (Ptr{Nothing}, Ptr{Gtk.GObject}, Cuint),
+              style, css_provider, 600)  # 600 = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+    catch e
+        # Just continue if this fails
+        println("Could not apply pulse CSS: $e")
+    end
     
-    # Get screen
-    sc = Gtk.GdkScreen()
-    push!(sc, css_provider, 700)  # High priority
+    # Set initial class
+    Gtk.set_gtk_property!(widget, :name, "pulse-animation-1")
     
-    # Apply initial style
-    GAccessor.name(widget, "pulse-animation")
-    
-    # Animation state and cycle counter
-    state = Ref(false)
+    # Animation state
+    is_color1 = Ref(true)
     cycle_count = Ref(0)
     
-    # Animation timer
-    timer_id = GLib.timeout_add(UInt32(duration * 1000)) do
-        if state[]
-            GAccessor.name(widget, "pulse-animation")
+    # Create a timer - using our simple implementation
+    timer = simple_timeout(duration / 2) do  # Half duration for each state
+        if is_color1[]
+            Gtk.set_gtk_property!(widget, :name, "pulse-animation-2")
         else
-            GAccessor.name(widget, "pulse-animation-alt")
-        end
-        
-        state[] = !state[]
-        
-        if cycles > 0
-            cycle_count[] += 0.5  # Each color change is half a cycle
+            Gtk.set_gtk_property!(widget, :name, "pulse-animation-1")
             
-            if cycle_count[] >= cycles
-                # Reset to original state
-                GAccessor.name(widget, original_style)
+            # Count full cycles
+            if cycles > 0
+                cycle_count[] += 1
                 
-                # Remove CSS provider
-                Gtk.GLib.g_object_unref(css_provider)
-                
-                return false  # Stop timer
+                if cycle_count[] >= cycles
+                    # Reset to original
+                    Gtk.set_gtk_property!(widget, :name, original_name)
+                    return false  # Stop timer
+                end
             end
         end
         
+        is_color1[] = !is_color1[]
         return true  # Continue timer
     end
     
-    return timer_id
+    return timer
 end
 
 """
@@ -165,13 +223,6 @@ end
 
 Play a sound by name.
 This is a dummy implementation that just logs the sound played.
-
-# Arguments
-- `name::String`: Sound name (without extension)
-- `volume::Float64`: Volume level from 0.0 to 1.0 (default: 1.0)
-
-# Returns
-- Sound object reference or nothing if audio is disabled
 """
 function play_sound(name::String, volume::Float64=1.0)
     if !AUDIO_ENABLED[]
@@ -192,9 +243,6 @@ end
     stop_sound(sound::Any)
 
 Stop a currently playing sound.
-
-# Arguments
-- `sound`: Sound reference returned by play_sound()
 """
 function stop_sound(sound::Any)
     if sound === nothing || !AUDIO_ENABLED[]

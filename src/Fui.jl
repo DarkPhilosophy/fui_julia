@@ -1,6 +1,8 @@
 ﻿module Fui
 
 export run_application
+# At the beginning of your application's run_application function
+ENV["GTK_DEBUG"] = "interactive"
 
 # Enable multi-threading
 if !haskey(ENV, "JULIA_NUM_THREADS")
@@ -45,6 +47,9 @@ import .UILayout as Layout
 import .UIHandlers as Handlers
 import .UIAnimations as Animations  # Renamed for consistency
 import .AutoUpdate as Update  # Renamed for consistency
+
+gtk_version = ccall((:gtk_get_major_version, Gtk.libgtk), Cint, ())
+@info "GTK Version: $gtk_version"
 
 """
     run_application()
@@ -145,6 +150,8 @@ function load_language_directly(lang_code::AbstractString)
             end
         end
     end
+    # Fallback to default dictionary
+    @warn "Could not load language file for '$lang_code', using defaults"
     return get_default_language_dict()
 end
 

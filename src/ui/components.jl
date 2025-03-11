@@ -4,7 +4,6 @@ export create_labeled_component, create_client_component, create_progress_compon
        create_language_selector, create_debug_console, create_button
 
 using Gtk
-using ..XDebug
 
 """
     create_labeled_component(label_text::String, input_text::String, is_button::Bool=false)
@@ -19,33 +18,39 @@ Create a labeled UI component with a label and text entry.
 # Returns
 - Dictionary with component parts
 """
-function create_labeled_component(label_text::String, input_text::String, is_button::Bool=false)
+function create_labeled_component(label_text::AbstractString, input_text::AbstractString, is_button::Bool=false)
+    # Cast inputs to strings as needed
+    label_text_str = string(label_text)
+    input_text_str = string(input_text)
+    is_button_bool = convert(Bool, is_button)
+    
+    # Create container
     container = GtkBox(:h)
-    label = GtkLabel(label_text)
+    
+    # Create components
+    label = GtkLabel(label_text_str)
     input = GtkEntry()
     
-    # Set properties
-    if input_text !== nothing
-        GAccessor.text(input, string(input_text))
+    # Set text
+    Gtk.set_gtk_property!(input, :text, input_text_str)
+    
+    # Configure based on button flag
+    if is_button_bool
+        Gtk.set_gtk_property!(input, :has_frame, false)
+        Gtk.set_gtk_property!(input, :editable, false)
     end
     
-    if is_button
-        GAccessor.has_frame(input, false)
-        GAccessor.editable(input, false)
-        GAccessor.name(input, "file-button")
-    else
-        GAccessor.has_frame(input, true)
-    end
-    
-    # Layout
+    # Add components to container
     push!(container, label)
     push!(container, input)
     
-    # Set expansion and margins
-    GAccessor.hexpand(label, false)
-    GAccessor.hexpand(input, true)
-    GAccessor.margin_start(input, 10)
+    # Set spacing
+    Gtk.set_gtk_property!(container, :spacing, 10)
     
+    # Make input expand
+    Gtk.set_gtk_property!(input, :hexpand, true)
+    
+    # Return dictionary of components
     return Dict{String, Any}(
         "container" => container,
         "label" => label,
@@ -66,53 +71,56 @@ Create the client management component with combobox and add/remove buttons.
 # Returns
 - Dictionary with component parts
 """
-function create_client_component(label_text::String, clients::Vector{String}=String[], selected::String="")
-    # Container
+function create_client_component(label_text::AbstractString, clients::Vector{String}=AbstractString[], selected::String="")
+    # Create container
     container = GtkBox(:h)
-    GAccessor.name(container, "client-box")
     
     # Create components
-    label = GtkLabel(label_text)
-    combo = GtkComboBoxText(false)  # Not editable
+    label = GtkLabel(string(label_text))
+    combo = GtkComboBoxText(false)
     remove_button = GtkButton("✖ Del")
     add_entry = GtkEntry()
     add_button = GtkButton("➕ Add")
     
-    # Set button classes
-    GAccessor.name(remove_button, "small-button")
-    GAccessor.name(add_button, "small-button")
+    # Convert clients to array if string
+    client_array = typeof(clients) <: AbstractString ? split(clients, ",") : clients
     
-    # Populate client options - convert clients to array of strings if needed
-    client_array = isa(clients, String) ? split(clients, ",") : clients
+    # Add clients to combo
     for client in client_array
-        push!(combo, client)
+        push!(combo, string(client))
     end
     
     # Set active client if provided
-    if !isempty(selected) && (selected in client_array)
+    if !isempty(selected) && length(client_array) > 0
+        found = false
         for (i, client) in enumerate(client_array)
-            if client == selected
-                combo.active = i - 1
+            if string(client) == string(selected)
+                Gtk.set_gtk_property!(combo, :active, i - 1)
+                found = true
                 break
             end
         end
-    elseif !isempty(client_array)
-        combo.active = 0  # Select first by default
+        
+        # Default to first item if not found
+        if !found && length(client_array) > 0
+            Gtk.set_gtk_property!(combo, :active, 0)
+        end
+    elseif length(client_array) > 0
+        Gtk.set_gtk_property!(combo, :active, 0)
     end
     
-    # Layout components
+    # Add components to container
     push!(container, label)
     push!(container, combo)
     push!(container, remove_button)
     push!(container, add_entry)
     push!(container, add_button)
     
-    # Set margins and expansion
-    GAccessor.margin_start(combo, 10)
-    GAccessor.margin_start(remove_button, 5)
-    GAccessor.margin_start(add_entry, 5)
-    GAccessor.margin_start(add_button, 5)
-    GAccessor.hexpand(add_entry, true)
+    # Set spacing
+    Gtk.set_gtk_property!(container, :spacing, 5)
+    
+    # Make add_entry expand
+    Gtk.set_gtk_property!(add_entry, :hexpand, true)
     
     return Dict{String, Any}(
         "container" => container,
@@ -133,24 +141,20 @@ Create a progress bar with label.
 - Dictionary with progress bar, label, and container
 """
 function create_progress_component()
-    # Create container
     container = GtkBox(:h)
-    
-    # Create progress bar
     progress_bar = GtkProgressBar()
-    GAccessor.fraction(progress_bar, 0.0)
-    
-    # Create label
     progress_label = GtkLabel("0%")
-    GAccessor.name(progress_label, "progress-label")
     
-    # Layout
+    # Set initial fraction
+    Gtk.set_gtk_property!(progress_bar, :fraction, 0.0)
+    
+    # Add components
     push!(container, progress_bar)
     push!(container, progress_label)
     
-    # Set expansion and margins
-    GAccessor.hexpand(progress_bar, true)
-    GAccessor.margin_start(progress_label, 10)
+    # Set properties
+    Gtk.set_gtk_property!(container, :spacing, 10)
+    Gtk.set_gtk_property!(progress_bar, :hexpand, true)
     
     return Dict{String, Any}(
         "container" => container,
@@ -163,35 +167,39 @@ end
     create_language_selector(available_languages::Vector{String}, current_language::String)
 
 Create a language selection component.
-
-# Arguments
-- `available_languages::Vector{String}`: List of available language codes
-- `current_language::String`: Currently selected language code
-
-# Returns
-- Dictionary with component parts
 """
 function create_language_selector(available_languages::Vector{String}, current_language::String)
-    # Create container
-    container = GtkBox(:h)
-    GAccessor.name(container, "language-box")
+    # Convert inputs if needed
+    langs = convert(Vector{String}, [string(lang) for lang in available_languages])
+    current = string(current_language)
     
-    # Create components
+    # Create container and components
+    container = GtkBox(:h)
     label = GtkLabel("Language:")
     icon = GtkLabel("🌐")
-    combo = GtkComboBoxText(false)  # Not editable
+    combo = GtkComboBoxText(false)
     
-    # Populate language options
-    for lang in available_languages
+    # Add languages to combo
+    for lang in langs
         push!(combo, lang)
     end
     
-    # Set current language
-    current_idx = findfirst(==(current_language), available_languages)
-    if current_idx !== nothing
-        combo.active = current_idx - 1
-    elseif !isempty(available_languages)
-        combo.active = 0  # Select first by default
+    # Set active language
+    if !isempty(current) && !isempty(langs)
+        found = false
+        for (i, lang) in enumerate(langs)
+            if lang == current
+                Gtk.set_gtk_property!(combo, :active, i - 1)
+                found = true
+                break
+            end
+        end
+        
+        if !found && !isempty(langs)
+            Gtk.set_gtk_property!(combo, :active, 0)
+        end
+    elseif !isempty(langs)
+        Gtk.set_gtk_property!(combo, :active, 0)
     end
     
     # Layout
@@ -199,9 +207,8 @@ function create_language_selector(available_languages::Vector{String}, current_l
     push!(container, icon)
     push!(container, combo)
     
-    # Set margins
-    GAccessor.margin_start(icon, 5)
-    GAccessor.margin_start(combo, 5)
+    # Set properties
+    Gtk.set_gtk_property!(container, :spacing, 5)
     
     return Dict{String, Any}(
         "container" => container,
@@ -218,39 +225,35 @@ Create a debug console component (initially hidden).
 
 # Returns
 - Dictionary with console components
+
+Create a debug console component.
 """
 function create_debug_console()
     # Create components
     button = GtkButton("▶")
-    GAccessor.name(button, "console-toggle")
-    
     text_view = GtkTextView()
-    GAccessor.name(text_view, "console-text")
-    GAccessor.editable(text_view, false)
-    GAccessor.cursor_visible(text_view, false)
-    
     scroll = GtkScrolledWindow()
-    push!(scroll, text_view)
-    
     label = GtkLabel("DEBUG CONSOLE")
-    GAccessor.name(label, "header-label")
+    
+    # Configure components
+    Gtk.set_gtk_property!(text_view, :editable, false)
+    Gtk.set_gtk_property!(text_view, :cursor_visible, false)
+    
+    # Layout
+    push!(scroll, text_view)
     
     header = GtkBox(:h)
     push!(header, label)
-    
-    # Center the label
-    GAccessor.halign(label, Gtk.GConstants.GtkAlign.CENTER)
-    GAccessor.hexpand(label, true)
+    Gtk.set_gtk_property!(label, :hexpand, true)
     
     container = GtkBox(:v)
     push!(container, header)
     push!(container, scroll)
     
-    # Make the scroll expandable
-    GAccessor.vexpand(scroll, true)
-    
-    # Initially hidden
-    GAccessor.visible(container, false)
+    # Set properties
+    Gtk.set_gtk_property!(container, :spacing, 5)
+    Gtk.set_gtk_property!(scroll, :vexpand, true)
+    Gtk.set_gtk_property!(container, :visible, false)
     
     # Dev area for easter egg
     dev_area = GtkBox(:h)
@@ -283,56 +286,10 @@ function create_button(label::String, class::String="")
     button = GtkButton(label)
     
     if !isempty(class)
-        GAccessor.name(button, class)
+        Gtk.set_gtk_property!(button, :name, class)
     end
     
     return button
-end
-
-"""
-    add_css_class(widget, class_name::String)
-
-Add a CSS class to a widget.
-
-# Arguments
-- `widget`: The widget to modify
-- `class_name::String`: The CSS class to add
-"""
-function add_css_class(widget, class_name::String)
-    # For GTK3, we'll have to concatenate class names - not ideal but works
-    current_class = GAccessor.name(widget)
-    if isempty(current_class)
-        GAccessor.name(widget, class_name)
-    else
-        # If widget already has a class, append new one
-        if !occursin(class_name, current_class)
-            GAccessor.name(widget, string(current_class, " ", class_name))
-        end
-    end
-end
-
-"""
-    remove_css_class(widget, class_name::String)
-
-Remove a CSS class from a widget.
-
-# Arguments
-- `widget`: The widget to modify
-- `class_name::String`: The CSS class to remove
-"""
-function remove_css_class(widget, class_name::String)
-    current_class = GAccessor.name(widget)
-    if !isempty(current_class)
-        # If the class is the only one
-        if current_class == class_name
-            GAccessor.name(widget, "")
-        else
-            # Handle space-separated class names
-            classes = split(current_class, " ")
-            new_classes = filter(c -> c != class_name, classes)
-            GAccessor.name(widget, join(new_classes, " "))
-        end
-    end
 end
 
 end # module

@@ -5,8 +5,8 @@ export build_interface, UIComponents
 using Gtk
 using ..XDebug
 using ..Config
-import ..UIComponents as Components  # Import with rename to avoid conflicts
-import ..UIAnimations as Animations  # Import animations with rename
+import ..UIComponents as Components
+import ..UIAnimations as Animations
 
 # Constants
 const ORIGINAL_WIDTH = 557
@@ -52,22 +52,30 @@ mutable struct UIComponents
 end
 
 """
+    style_context_add_provider(context, provider, priority)
+
+Add provider to style context with direct ccall for maximum compatibility.
+"""
+function style_context_add_provider(context, provider, priority::Integer)
+    ccall((:gtk_style_context_add_provider, Gtk.libgtk), Cvoid,
+          (Ptr{Nothing}, Ptr{Gtk.GObject}, Cuint),
+          context, provider, Cuint(priority))
+end
+
+"""
     build_interface(config::Dict{String, Any}, language::Dict{String, Any})
 
 Build the complete UI layout with components.
-
-# Arguments
-- `config`: Application configuration
-- `language`: Language dictionary for UI text
-
-# Returns
-- `UIComponents`: Structure containing all UI components
 """
 function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
+    # Check GTK version
+    gtk_version = ccall((:gtk_get_major_version, Gtk.libgtk), Cint, ())
+    println("[ Info] GTK Version: $gtk_version")
+
     # Create main window
     window = GtkWindow("MagicRay CAD/CSV Generator", ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
     
-    # Apply CSS styling - fixed for GTK3 in Julia
+    # Apply CSS styling - corrected for GTK3 in Julia
     css_provider = GtkCssProvider()
     css_data = """
     .main-window {
@@ -141,7 +149,6 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     .clickable-label:hover {
         text-decoration: underline;
-        cursor: pointer;
     }
     
     .about-label {
@@ -158,16 +165,19 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     }
     """
     
-    # Apply CSS to window - fixed for GTK3 in Julia
-    GAccessor.name(window, "main-window")
-    # Retrieve the default screen once
-    screen = Gtk.GdkScreen()
-
-    # Load CSS data into the provider
-    Gtk.GAccessor.load_data(css_provider, css_data)
-
-    # Add the CSS provider to the screen with application priority
-    Gtk.add_provider_for_screen(screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    # Load CSS data into the provider - direct ccall for maximum compatibility
+    try
+        ccall((:gtk_css_provider_load_from_data, Gtk.libgtk), Bool, 
+              (Ptr{Gtk.GObject}, Ptr{UInt8}, Csize_t, Ptr{Nothing}), 
+              css_provider, css_data, length(css_data), C_NULL)
+        
+        # Apply CSS to window's style context
+        style_context = ccall((:gtk_widget_get_style_context, Gtk.libgtk), Ptr{Nothing},
+                            (Ptr{Gtk.GObject},), window)
+        style_context_add_provider(style_context, css_provider, 600)  # GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+    catch e
+        @warn "Could not apply CSS: $e"
+    end
 
     # Create the main vertical box container
     box_main = GtkBox(:v)
@@ -176,17 +186,17 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     push!(window, box_main)
 
     # Set margin for the box
-    GAccessor.margin(box_main, 10)
+    Gtk.set_gtk_property!(box_main, :border_width, 10)
     
     # Header area
     header_box = GtkBox(:h)
     about_label = GtkLabel("by adalbertalexandru.ungureanu@flex.com")
-    GAccessor.name(about_label, "about-label")
+    Gtk.set_gtk_property!(about_label, :name, "about-label")
     push!(header_box, about_label)
     
     # Add header to main box
     push!(box_main, header_box)
-    GAccessor.margin_bottom(header_box, 20)
+    Gtk.set_gtk_property!(header_box, :margin_bottom, 20)
     
     # Create component groups - using Components module functions
     bomsplit = Components.create_labeled_component(
@@ -203,7 +213,7 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Get clients as array of strings
     client_string = get(config, "Clients", "GEC,PBEH,AGI,NER,SEA4,SEAH,ADVA,NOK")
-    clients = typeof(client_string) == String ? split(client_string, ",") : client_string
+    clients = typeof(client_string) <: AbstractString ? split(client_string, ",") : client_string
     
     client = Components.create_client_component(
         get(get(language, "Labels", Dict()), "Client", "Client"),
@@ -224,31 +234,32 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     push!(box_main, program["container"])
     
     # Add spacing between components
-    GAccessor.margin_bottom(bomsplit["container"], 10)
-    GAccessor.margin_bottom(pincad["container"], 10)
-    GAccessor.margin_bottom(client["container"], 10)
-    GAccessor.margin_bottom(program["container"], 20)
+    Gtk.set_gtk_property!(bomsplit["container"], :margin_bottom, 10)
+    Gtk.set_gtk_property!(pincad["container"], :margin_bottom, 10)
+    Gtk.set_gtk_property!(client["container"], :margin_bottom, 10)
+    Gtk.set_gtk_property!(program["container"], :margin_bottom, 20)
     
     # Generate button
     generate_button = GtkButton(get(get(language, "Buttons", Dict()), "Generate", "Generate .CAD/CSV"))
-    GAccessor.name(generate_button, "generate-button")
+    Gtk.set_gtk_property!(generate_button, :name, "generate-button")
     generate_box = GtkBox(:h)
     push!(generate_box, generate_button)
-    GAccessor.halign(generate_button, Gtk.GConstants.GtkAlign.CENTER)  # Center align
-    GAccessor.hexpand(generate_button, true)
+    Gtk.set_gtk_property!(generate_button, :halign, Gtk.GConstants.GtkAlign.CENTER)  # Center align
+    Gtk.set_gtk_property!(generate_button, :hexpand, true)
     push!(box_main, generate_box)
-    GAccessor.margin_bottom(generate_box, 20)
+    Gtk.set_gtk_property!(generate_box, :margin_bottom, 20)
     
     # Progress bar area
     progress_bar = GtkProgressBar()
-    progress_bar.fraction = 0.0
+    # FIXED: Using property setting instead of direct field access
+    Gtk.set_gtk_property!(progress_bar, :fraction, 0.0)
     progress_label = GtkLabel("0%")
     
     progress_box = GtkBox(:h)
     push!(progress_box, progress_bar)
     push!(progress_box, progress_label)
-    GAccessor.hexpand(progress_bar, true)
-    GAccessor.margin_start(progress_label, 10)
+    Gtk.set_gtk_property!(progress_bar, :hexpand, true)
+    Gtk.set_gtk_property!(progress_label, :margin_start, 10)
     
     push!(box_main, progress_box)
     
@@ -282,9 +293,9 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     current_lang = Config.get_language_code(config)
     current_idx = findfirst(==(current_lang), lang_files)
     if current_idx !== nothing
-        language_combo.active = current_idx - 1
+        Gtk.set_gtk_property!(language_combo, :active, current_idx - 1)
     else
-        language_combo.active = 0  # Default to first
+        Gtk.set_gtk_property!(language_combo, :active, 0)  # Default to first
     end
     
     language_icon = GtkLabel("🌐")
@@ -292,35 +303,35 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     push!(language_box, language_label)
     push!(language_box, language_icon)
     push!(language_box, language_combo)
-    GAccessor.margin_start(language_combo, 5)
+    Gtk.set_gtk_property!(language_combo, :margin_start, 5)
     
-    GAccessor.name(language_box, "language-box")
-    GAccessor.halign(language_box, Gtk.GConstants.GtkAlign.END)  # Right align
+    Gtk.set_gtk_property!(language_box, :name, "language-box")
+    Gtk.set_gtk_property!(language_box, :halign, Gtk.GConstants.GtkAlign.END)  # Right align
     
     push!(box_main, language_box)
     
     # Debug console (initially hidden)
     console_button = GtkButton("▶")
     console_text = GtkTextView()
-    GAccessor.name(console_text, "console-text")
-    GAccessor.editable(console_text, false)
-    GAccessor.cursor_visible(console_text, false)
+    Gtk.set_gtk_property!(console_text, :name, "console-text")
+    Gtk.set_gtk_property!(console_text, :editable, false)
+    Gtk.set_gtk_property!(console_text, :cursor_visible, false)
     
     console_scroll = GtkScrolledWindow()
     push!(console_scroll, console_text)
     
     console_label = GtkLabel("DEBUG CONSOLE")
-    GAccessor.name(console_label, "header-label")
+    Gtk.set_gtk_property!(console_label, :name, "header-label")
     
     console_header = GtkBox(:h)
     push!(console_header, console_label)
-    GAccessor.halign(console_label, Gtk.GConstants.GtkAlign.CENTER)
-    GAccessor.hexpand(console_label, true)
+    Gtk.set_gtk_property!(console_label, :halign, Gtk.GConstants.GtkAlign.CENTER)
+    Gtk.set_gtk_property!(console_label, :hexpand, true)
     
     console_box = GtkBox(:v)
     push!(console_box, console_header)
     push!(console_box, console_scroll)
-    GAccessor.vexpand(console_scroll, true)
+    Gtk.set_gtk_property!(console_scroll, :vexpand, true)
     
     # Hidden dev area for easter egg
     console_dev = GtkBox(:h)
@@ -354,7 +365,7 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     # Hide console button unless debug mode is enabled
     debug_enabled = get(config, "Debug", false)
     if !debug_enabled
-        GAccessor.visible(console_button, false)
+        Gtk.set_gtk_property!(console_button, :visible, false)
     end
     
     # Set window to be visible
@@ -366,40 +377,39 @@ end
 """
     set_drag_destination(widget::GtkWidget)
 
-Make a widget a valid drag destination for files.
+Make a widget a valid drag destination for files using direct ccall approach.
 """
 function set_drag_destination(widget)
-    # GTK3 drag and drop setup
-    target_entries = [Gtk.GtkTargetEntry("text/uri-list", 0, 0)]
-    targets = Gtk.GtkTargetList(target_entries)
-    Gtk.drag_dest_set(
-        widget, 
-        Gtk.GConstants.GtkDestDefaults.ALL, 
-        target_entries, 
-        Gtk.GConstants.GdkDragAction.COPY
-    )
-
-    # Connect to the drag-data-received signal
-    signal_connect(widget, "drag-data-received") do widget, context, x, y, data, info, time
-        # Converting drag data to file path
-        uris = split(unsafe_string(convert(Ptr{UInt8}, data.data)), "\r\n")
-        if !isempty(uris)
-            uri = uris[1]
-            # Convert URI to file path
-            if startswith(uri, "file://")
-                path = uri[8:end]
-                # On Windows, convert /C:/path to C:/path
-                if Sys.iswindows() && startswith(path, "/")
-                    path = path[2:end]
+    try
+        # Direct approach without GtkTargetEntry
+        # Set widget as a drag destination for all kinds of data
+        ccall((:gtk_drag_dest_set, Gtk.libgtk), Cvoid,
+              (Ptr{Gtk.GObject}, Cint, Ptr{Nothing}, Cint, Cint),
+              widget, 3, # GTK_DEST_DEFAULT_ALL = 3
+              C_NULL, 0, # No targets specified, accept any
+              1) # GDK_ACTION_COPY = 1
+        
+        # Connect to the drag-data-received signal
+        signal_connect(widget, "drag-data-received") do widget, context, x, y, data, info, time
+            # Converting drag data to file path
+            uris = split(unsafe_string(convert(Ptr{UInt8}, data.data)), "\r\n")
+            if !isempty(uris)
+                uri = uris[1]
+                # Convert URI to file path
+                if startswith(uri, "file://")
+                    path = uri[8:end]
+                    # On Windows, convert /C:/path to C:/path
+                    if Sys.iswindows() && startswith(path, "/")
+                        path = path[2:end]
+                    end
+                    Gtk.set_gtk_property!(widget, :text, path)
                 end
-                GAccessor.text(widget, path)
             end
+            return nothing
         end
-        return nothing
+    catch e
+        @warn "Could not set up drag and drop for widget: $e"
     end
-    
-    # Make the widget accept file drops
-    GAccessor.allowdrop(widget, true)
 end
 
 end # module
