@@ -2,7 +2,7 @@
 
 export build_interface, UIComponents
 
-using Gtk
+using Gtk, Gtk.ShortNames, Gtk.GLib
 using ..XDebug
 using ..Config
 import ..UIComponents as Components

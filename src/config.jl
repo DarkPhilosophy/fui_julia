@@ -25,18 +25,18 @@ const DEFAULT_CONFIG = Dict(
 )
 
 """
-    load_config(config_path::String="config.ini")
+    load_config(config_path::String="fui.ini")
 
 Load the application configuration from a file.
 If the file doesn't exist, it creates a default configuration.
 
 # Arguments
-- `config_path::String`: Path to the configuration file (default: "config.ini")
+- `config_path::String`: Path to the configuration file (default: "fui.ini")
 
 # Returns
-- Configuration dictionary
+- `Dict{String, Any}`: Configuration dictionary
 """
-function load_config(config_path::String="config.ini")
+function load_config(config_path::String="fui.ini")
     # Check if config file exists
     if !isfile(config_path)
         # Create default config
@@ -133,8 +133,8 @@ end
 Merge default values into a configuration dictionary.
 
 # Arguments
-- `config`: Configuration to update
-- `defaults`: Default values
+- `config`: Configuration to update (can be any dictionary type)
+- `defaults`: Default values (can be any dictionary type)
 
 # Returns
 - Updated configuration
@@ -145,6 +145,7 @@ function merge_defaults!(config, defaults)
         return config
     end
     
+    # Continue with the merge logic
     for (key, value) in defaults
         if !haskey(config, key)
             config[key] = deepcopy(value)
@@ -157,18 +158,18 @@ function merge_defaults!(config, defaults)
 end
 
 """
-    save_config(config::Dict{String, Any}, config_path::String="config.ini")
+    save_config(config::Dict{String, Any}, config_path::String="fui.ini")
 
 Save the configuration to a file.
 
 # Arguments
-- `config`: Configuration to save
-- `config_path::String`: Path to the configuration file (default: "config.ini")
+- `config::Dict{String, Any}`: Configuration to save
+- `config_path::String`: Path to the configuration file (default: "fui.ini")
 
 # Returns
 - `Bool`: Success status
 """
-function save_config(config, config_path::String="config.ini")
+function save_config(config::Dict{String, Any}, config_path::String="fui.ini")
     return Safety.safe_operation(
         () -> begin
             # Ensure directory exists
@@ -181,7 +182,7 @@ function save_config(config, config_path::String="config.ini")
             open(config_path, "w") do file
                 # Write non-dict values first
                 for (key, value) in config
-                    if !(value isa AbstractDict)
+                    if !(value isa Dict)
                         if value isa Vector
                             write(file, "$key=$(join(value, ','))\n")
                         elseif value isa String
@@ -194,7 +195,7 @@ function save_config(config, config_path::String="config.ini")
                 
                 # Write sections
                 for (section, values) in config
-                    if values isa AbstractDict
+                    if values isa Dict
                         write(file, "\n[$section]\n")
                         for (key, value) in values
                             if value isa Vector
@@ -214,6 +215,71 @@ function save_config(config, config_path::String="config.ini")
         (err) -> begin
             @warn "Failed to save configuration: $err"
             return false
+        end
+    )
+end
+
+"""
+    load_language(lang_code::String)
+
+Load a language file.
+
+# Arguments
+- `lang_code::String`: Language code (e.g., "en")
+
+# Returns
+- `Dict{String, Any}`: Language dictionary or empty dict if failed
+"""
+function load_language(lang_code::String)
+    # Try to find language file in various locations
+    lang_file = nothing
+    locations = [
+        joinpath(get_assets_dir(), "lang", "$(lang_code).json"),  # First check in assets
+        joinpath("assets", "lang", "$(lang_code).json"),          # Then check relative paths
+        joinpath("data", "lang", "$(lang_code).json"),
+        "$(lang_code).json"                                       # Finally check current dir
+    ]
+    
+    # Try each location
+    for path in locations
+        if isfile(path)
+            lang_file = path
+            break
+        end
+    end
+    
+    # If no file found, try to create default
+    if lang_file === nothing
+        if lang_code == "en"
+            default_path = joinpath(get_assets_dir(), "lang", "$(lang_code).json")
+            # Ensure the directory exists
+            dir_path = dirname(default_path)
+            if !isdir(dir_path)
+                mkpath(dir_path)
+            end
+            
+            # Create default English language file
+            if create_default_english(default_path)
+                lang_file = default_path
+            end
+        end
+    end
+    
+    # If we still don't have a file, return empty dict
+    if lang_file === nothing
+        @warn "Language file not found for code: $lang_code"
+        return Dict{String, Any}()
+    end
+    
+    # Load the language file content
+    return Safety.safe_operation(
+        () -> begin
+            content = read(lang_file, String)
+            return JSON3.read(content, Dict{String, Any})
+        end,
+        (err) -> begin
+            @warn "Failed to load language file: $err"
+            return Dict{String, Any}()
         end
     )
 end
@@ -275,83 +341,17 @@ function create_default_english(file_path::String)
 end
 
 """
-    load_language(lang_code::String)
-
-Load a language file.
-
-# Arguments
-- `lang_code::String`: Language code (e.g., "en")
-
-# Returns
-- Language dictionary
-"""
-function load_language(lang_code::String)
-    # Try to find language file in various locations
-    lang_file = nothing
-    
-    locations = [
-        joinpath(get_assets_dir(), "lang", "$(lang_code).json"),  # First check in assets
-        joinpath("assets", "lang", "$(lang_code).json"),          # Then check relative paths
-        joinpath("data", "lang", "$(lang_code).json"),
-        "$(lang_code).json"                                       # Finally check current dir
-    ]
-    
-    # Try each location
-    for path in locations
-        if isfile(path)
-            lang_file = path
-            break
-        end
-    end
-    
-    # If no file found, try to create default
-    if lang_file === nothing
-        if lang_code == "en"
-            default_path = joinpath(get_assets_dir(), "lang", "$(lang_code).json")
-            # Ensure the directory exists
-            dir_path = dirname(default_path)
-            if !isdir(dir_path)
-                mkpath(dir_path)
-            end
-            
-            # Create default English language file
-            if create_default_english(default_path)
-                lang_file = default_path
-            end
-        end
-    end
-    
-    # If we still don't have a file, return empty dict
-    if lang_file === nothing
-        @warn "Language file not found for code: $lang_code"
-        return Dict{String, Any}()
-    end
-    
-    # Load the language file content
-    return Safety.safe_operation(
-        () -> begin
-            content = read(lang_file, String)
-            return JSON3.read(content, Dict{String, Any})
-        end,
-        (err) -> begin
-            @warn "Failed to load language file: $err"
-            return Dict{String, Any}()
-        end
-    )
-end
-
-"""
-    get_language_code(config)
+    get_language_code(config::Dict{String, Any})
 
 Extract the language code from configuration.
 
 # Arguments
-- `config`: Configuration dictionary
+- `config::Dict{String, Any}`: Configuration dictionary
 
 # Returns
 - `String`: Language code
 """
-function get_language_code(config)
+function get_language_code(config::Dict{String, Any})
     lang_path = get(config, "Language", "assets/lang/en.json")
     
     # Extract code from path
@@ -387,14 +387,14 @@ function get_assets_dir()
     
     # If not found, try to create it
     try
-        path = "assets"
+        path = joinpath(dirname(dirname(@__FILE__)), "assets")
         if !isdir(path)
             mkpath(path)
         end
         return abspath(path)
     catch
         # Fallback to current directory
-        return "."
+        return "assets"
     end
 end
 

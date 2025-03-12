@@ -71,7 +71,7 @@ Create the client management component with combobox and add/remove buttons.
 # Returns
 - Dictionary with component parts
 """
-function create_client_component(label_text::AbstractString, clients::Vector{String}=AbstractString[], selected::String="")
+function create_client_component(label_text::AbstractString, clients::Vector{AbstractString}=Vector[], selected::AbstractString="")
     # Create container
     container = GtkBox(:h)
     
