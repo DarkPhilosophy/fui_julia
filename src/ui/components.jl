@@ -71,7 +71,7 @@ Create the client management component with combobox and add/remove buttons.
 # Returns
 - Dictionary with component parts
 """
-function create_client_component(label_text::AbstractString, clients::Vector{AbstractString}=Vector[], selected::AbstractString="")
+function create_client_component(label_text::AbstractString, clients::Vector{<:AbstractString}=AbstractString[], selected::AbstractString="")
     # Create container
     container = GtkBox(:h)
     
@@ -83,7 +83,7 @@ function create_client_component(label_text::AbstractString, clients::Vector{Abs
     add_button = GtkButton("➕ Add")
     
     # Convert clients to array if string
-    client_array = typeof(clients) <: AbstractString ? split(clients, ",") : clients
+    client_array = typeof(clients) <: AbstractString ? split(string(clients), ",") : clients
     
     # Add clients to combo
     for client in client_array
@@ -168,7 +168,7 @@ end
 
 Create a language selection component.
 """
-function create_language_selector(available_languages::Vector{String}, current_language::String)
+function create_language_selector(available_languages::Vector{<:AbstractString}, current_language::AbstractString)
     # Convert inputs if needed
     langs = convert(Vector{String}, [string(lang) for lang in available_languages])
     current = string(current_language)
@@ -282,11 +282,11 @@ Create a styled button.
 # Returns
 - GtkButton instance
 """
-function create_button(label::String, class::String="")
-    button = GtkButton(label)
+function create_button(label::AbstractString, class::AbstractString="")
+    button = GtkButton(string(label))
     
     if !isempty(class)
-        Gtk.set_gtk_property!(button, :name, class)
+        Gtk.set_gtk_property!(button, :name, string(class))
     end
     
     return button

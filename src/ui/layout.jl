@@ -2,7 +2,7 @@
 
 export build_interface, UIComponents
 
-using Gtk, Gtk.ShortNames, Gtk.GLib
+using Gtk
 using ..XDebug
 using ..Config
 import ..UIComponents as Components
@@ -73,7 +73,12 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     println("[ Info] GTK Version: $gtk_version")
 
     # Create main window
-    window = GtkWindow("MagicRay CAD/CSV Generator", ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
+    window = GtkWindow()
+    
+    # Ensure window has proper opacity and visibility from the start
+    ccall((:gtk_window_set_title, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Ptr{UInt8}), window, "MagicRay CAD/CSV Generator")
+    ccall((:gtk_window_set_default_size, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint, Cint), window, ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
+    ccall((:gtk_window_set_position, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint), window, 1) # GTK_WIN_POS_CENTER = 1
     
     # Apply CSS styling - corrected for GTK3 in Julia
     css_provider = GtkCssProvider()
@@ -213,12 +218,20 @@ function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
     
     # Get clients as array of strings
     client_string = get(config, "Clients", "GEC,PBEH,AGI,NER,SEA4,SEAH,ADVA,NOK")
-    clients = typeof(client_string) <: AbstractString ? split(client_string, ",") : client_string
+    
+    # Properly handle clients - convert from SubString to String if needed
+    clients = if typeof(client_string) <: AbstractString 
+        # Split returns SubString{String} which we convert to String
+        map(String, split(client_string, ","))
+    else
+        # If it's already a collection, ensure all elements are String
+        map(String, client_string)
+    end
     
     client = Components.create_client_component(
         get(get(language, "Labels", Dict()), "Client", "Client"),
         clients,
-        get(get(config, "Last", Dict()), "OptionClient", "")
+        String(get(get(config, "Last", Dict()), "OptionClient", ""))
     )
     
     program = Components.create_labeled_component(

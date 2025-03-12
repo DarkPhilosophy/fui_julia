@@ -75,32 +75,27 @@ end
 Animate a widget fading in from invisible to visible.
 """
 function fade_in(widget, duration::Float64=0.5)
-    # Set initial opacity to 0
-    Gtk.set_gtk_property!(widget, :opacity, 0.0)
-    Gtk.set_gtk_property!(widget, :visible, true)
+    # Use direct GTK approach for better reliability
+    # Make widget visible immediately
+    ccall((:gtk_widget_set_visible, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint), widget, true)
     
-    # Create animation
-    frames = 20
-    interval = duration / frames
-    opacity_step = 1.0 / frames
+    # Set initial opacity to a low but visible value to ensure it's seen
+    ccall((:gtk_widget_set_opacity, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cdouble), widget, 0.4)
     
-    # Animation state
-    current_opacity = Ref(0.0)
-    
-    # Create a timer - using our simple implementation
-    timer = simple_timeout(interval) do
-        current_opacity[] += opacity_step
-        
-        if current_opacity[] >= 1.0
-            Gtk.set_gtk_property!(widget, :opacity, 1.0)
-            return false  # Stop timer
-        end
-        
-        Gtk.set_gtk_property!(widget, :opacity, current_opacity[])
-        return true  # Continue timer
+    # Force update
+    while Gtk.G_.events_pending()
+        Gtk.G_.main_iteration()
     end
     
-    return timer
+    # Set full opacity immediately
+    ccall((:gtk_widget_set_opacity, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cdouble), widget, 1.0)
+    
+    # Force update again
+    while Gtk.G_.events_pending()
+        Gtk.G_.main_iteration()
+    end
+    
+    return nothing
 end
 
 """
@@ -121,8 +116,8 @@ function fade_out(widget, duration::Float64=0.5, remove::Bool=false)
     # Animation state
     current_opacity = Ref(1.0)
     
-    # Create a timer - using our simple implementation
-    timer = simple_timeout(interval) do
+    # Define the callback function
+    function opacity_callback()
         current_opacity[] -= opacity_step
         
         if current_opacity[] <= 0.0
@@ -142,6 +137,9 @@ function fade_out(widget, duration::Float64=0.5, remove::Bool=false)
         Gtk.set_gtk_property!(widget, :opacity, current_opacity[])
         return true  # Continue timer
     end
+    
+    # Create a timer
+    timer = simple_timeout(interval, opacity_callback)
     
     return timer
 end
@@ -192,8 +190,8 @@ function pulse(widget, color1::String, color2::String, duration::Float64=1.0, cy
     is_color1 = Ref(true)
     cycle_count = Ref(0)
     
-    # Create a timer - using our simple implementation
-    timer = simple_timeout(duration / 2) do  # Half duration for each state
+    # Define the callback function
+    function pulse_callback()
         if is_color1[]
             Gtk.set_gtk_property!(widget, :name, "pulse-animation-2")
         else
@@ -214,6 +212,9 @@ function pulse(widget, color1::String, color2::String, duration::Float64=1.0, cy
         is_color1[] = !is_color1[]
         return true  # Continue timer
     end
+    
+    # Create timer with the callback
+    timer = simple_timeout(duration / 2, pulse_callback)
     
     return timer
 end

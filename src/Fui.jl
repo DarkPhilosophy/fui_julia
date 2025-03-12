@@ -1,6 +1,7 @@
 ﻿module Fui
 
 export run_application
+
 # At the beginning of your application's run_application function
 ENV["GTK_DEBUG"] = "interactive"
 
@@ -100,9 +101,18 @@ function run_application()
         # Check for updates in background
         @spawn Update.check_for_updates(config, ui_components)
         
-        # Show main window with fade-in animation
+        # Show main window (with safe fade-in animation if supported)
         main_window = ui_components.window
-        Animations.fade_in(main_window)
+        # Make sure all child widgets are visible first
+        try
+            # Try to fade in, but continue even if animation fails
+            Animations.fade_in(main_window)
+        catch e
+            # If animation fails, ensure window is visible at least
+            ccall((:gtk_widget_set_visible, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint), main_window, true)
+            ccall((:gtk_widget_set_opacity, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cdouble), main_window, 1.0)
+            XDebug.log_warning(logger, "Window animation failed: $e")
+        end
         XDebug.log_info(logger, "Application window displayed")
         
         # Start GTK main loop
@@ -132,26 +142,37 @@ Direct implementation of language loading without using Config module.
 - Language dictionary
 """
 function load_language_directly(lang_code::AbstractString)
+    # Convert to String if it's not already
+    code = string(lang_code)
+    
+    # Define the search paths for language files
     locations = [
-        joinpath("assets", "lang", "$(lang_code).json"),
-        joinpath("data", "lang", "$(lang_code).json"),
-        "$(lang_code).json"
+        joinpath("assets", "lang", "$(code).json"),
+        joinpath("data", "lang", "$(code).json"),
+        "$(code).json"
     ]
+    
     for path in locations
         if isfile(path)
             try
+                # Open file and read content with encoding handling
                 content = read(path, String)
+                
+                # Check for and remove BOM if present
                 if startswith(content, "\ufeff")
                     content = content[4:end]  # Strip BOM
                 end
+                
+                # Try to parse the JSON content
                 return JSON3.read(content, Dict{String, Any})
             catch e
                 @warn "Failed to load language file $path: $e"
             end
         end
     end
+    
     # Fallback to default dictionary
-    @warn "Could not load language file for '$lang_code', using defaults"
+    @warn "Could not load language file for '$code', using defaults"
     return get_default_language_dict()
 end
 
