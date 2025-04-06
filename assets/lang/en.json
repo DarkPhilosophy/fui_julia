@@ -1,24 +1,48 @@
-﻿{
-    "Buttons": {
-        "Generate": "Generate .CAD/CSV",
-        "Cancel": "Cancel",
-        "Yes": "Yes",
-        "No": "No",
-        "Load": "Load",
-        "Save": "Save",
-        "Add": "Add",
-        "Del": "Del",
-        "BOMSplitPath": "Click to select BOMSPLIT",
-        "PINSCadPath": "Click to select PINCAD"
-    },
+{
     "Labels": {
-        "BOMSplit": "Click to select BOM",
-        "PINSCad": "Click to select PINS",
-        "Client": "Client",
-        "ProgramName": "Program Name"
+        "AutoStop": "Stop",
+        "PINSCad": "Select PINS File",
+        "StatusPause": "Suspended: ",
+        "Interval": "Interval: ",
+        "Comp": "Station: ",
+        "AutoBackup": "Auto Backup",
+        "Destination": "Where to backup: ",
+        "StatusOn": "Running: ",
+        "AutoStart": "Start",
+        "Skip": {
+            "folder_pattern": "Skip folder if contain",
+            "justfiles_pattern": "Skip just files"
+        },
+        "Source": "What to backup: ",
+        "StatusOff": "Stopped: ",
+        "Method": "Method: ",
+        "Lang": "Language",
+        "Status": "Status: ",
+        "BOMSplitFile": "BOM Split File",
+        "PINSCadFile": "PINS File",
+        "ProgramName": "Program Name",
+        "Client": "Client:",
+        "Language": "Language:"
+    },
+    "Buttons": {
+        "Destination": "Click to select destination",
+        "Source": "Click to select source",
+        "Generate": "GENERATE .CAD/CSV",
+        "Del": "Delete",
+        "Add": "Add",
+        "PINSCadPath": "Click to Select PINS",
+        "BOMSplitPath": "Click to Select BOM",
+        "Exit": "Exit"
     },
     "Errors": {
-        "FileMissing": "File missing: %s",
-        "InvalidEntry": "Invalid entry detected"
+        "InvalidEntry": "Invalid entry detected",
+        "FileMissing": "File missing: %s"
+    },
+    "Check": {
+        "Cut": "Cut",
+        "Copy": "Copy"
+    },
+    "Placeholders": {
+        "NewClientEntry": "New client name"
     }
 }

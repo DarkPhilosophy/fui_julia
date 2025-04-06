@@ -1,5 +1,4 @@
-﻿#!/usr/bin/env julia
-
+﻿
 """
 setup.jl - Project setup script for MagicRay CAD/CSV Generator
 This script initializes the project environment, installs dependencies,
@@ -42,6 +41,7 @@ function setup_project()
             "Test",           # Testing framework
             "CSV",            # CSV processing
             "DataFrames",     # Tabular data
+            "ThreadPools",    # Thread pooling
             #"GtkSourceWidget" # For code/config editor
         ]
         ##Pkg.add("GtkSourceView_jll")

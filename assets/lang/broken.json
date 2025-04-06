@@ -14,21 +14,30 @@
         "Method": "Metodă: ",
         "Client": "Clientul:",
         "AutoStop": "Stop",
-        "PINSCadFile": "Selectați fișierul PINS",
         "Comp": "Station: ",
         "StatusOn": "Rulează: ",
         "Source": "What to backup: ",
         "Status": "Stare: ",
         "AutoBackup": "Auto Backup",
-        "BOMSplitFile": "Selectați fișierul BOM",
         "ProgramName": "Nume program",
         "Lang": "Language",
         "Language": "Limba:",
         "AutoStart": "Start",
         "StatusPause": "Suspendat: ",
         "StatusOff": "Oprit: ",
-        "PINSCad": "Selectați fișierul PINS",
-        "Destination": "Where to backup: "
+        "Destination": "Where to backup: ",
+        "Skip": {
+            "folder_pattern": "Sari folder care are",
+            "justfiles_pattern": "Sari doar fișierele"
+        }
+    },
+    "Errors": {
+        "InvalidEntry": "Invalid entry detected",
+        "FileMissing": "File missing: %s"
+    },
+    "Check": {
+        "Cut": "Tăiere",
+        "Copy": "Copiază"
     },
     "Placeholders": {
         "NewClientEntry": "Nume client nou"

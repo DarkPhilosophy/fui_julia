@@ -1,0 +1,4 @@
+Welcome to Fui JuliaA - Your BOM Split Solution
+Fast and efficient BOM splitting for your manufacturing needs
+Supporting multiple clients and file formats
+Built with Julia and GTK for cross-platform compatibility 

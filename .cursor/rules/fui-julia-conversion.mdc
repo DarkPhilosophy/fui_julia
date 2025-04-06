@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+To run the project we use: $env:JULIA_DEBUG='all'; julia --project=. src/Fui.jl
+Fui.jl is a conversion of fui.lua code in LuaRT to Julia
+Run the project yourself and fix work on everything!

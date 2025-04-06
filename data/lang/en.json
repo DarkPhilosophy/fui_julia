@@ -1,0 +1,15 @@
+{
+    "Labels": {
+        "BOMSplit": "Select BOM File",
+        "PINSCad": "Select PINS File",
+        "ProgramName": "Program name",
+        "Client": "Client"
+    },
+    "Buttons": {
+        "Generate": "Generate .CAD/CSV",
+        "Add": "Add",
+        "Del": "Del",
+        "BOMSplitPath": "Click to Select BOM",
+        "PINSCadPath": "Click to Select PINS"
+    }
+} 

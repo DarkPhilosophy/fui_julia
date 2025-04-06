@@ -65,25 +65,43 @@ function fetch_version(source::String, logger=nothing)
     
     log_msg("Fetching version from: $source")
     
+    # Handle network paths properly
+    if startswith(source, "//")
+        # Convert network path to file path
+        if Sys.iswindows()
+            source = replace(source, "//" => "\\\\")
+        end
+    end
+    
     result = Safety.safe_operation(
         () -> begin
             if startswith(source, "http://") || startswith(source, "https://")
                 # Web source
-                response = HTTP.get(source, status_exception=false)
-                if response.status == 200
-                    version = replace(String(response.body), r"\D" => "")
-                    log_msg("Received version from web: $version")
-                    return version
-                else
-                    log_msg("Failed to fetch version from web, status: $(response.status)")
+                try
+                    response = HTTP.get(source, status_exception=false)
+                    if response.status == 200
+                        version = replace(String(response.body), r"\D" => "")
+                        log_msg("Received version from web: $version")
+                        return version
+                    else
+                        log_msg("Failed to fetch version from web, status: $(response.status)")
+                        return "0"
+                    end
+                catch e
+                    log_msg("HTTP error: $e")
                     return "0"
                 end
             elseif isfile(source)
                 # File source
-                file_content = read(source, String)
-                version = replace(file_content, r"\D" => "")
-                log_msg("Read version from file: $version")
-                return version
+                try
+                    file_content = read(source, String)
+                    version = replace(file_content, r"\D" => "")
+                    log_msg("Read version from file: $version")
+                    return version
+                catch e
+                    log_msg("File read error: $e")
+                    return "0"
+                end
             else
                 log_msg("Source not found: $source")
                 return "0"

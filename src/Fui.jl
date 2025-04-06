@@ -1,216 +1,153 @@
 ﻿module Fui
 
-export run_application
+# Core imports
+using Gtk
+using Gtk.GLib
+using JSON3
+using Dates
+using Base.Threads
+using Logging
+import Base: get
 
-# At the beginning of your application's run_application function
-ENV["GTK_DEBUG"] = "interactive"
+println("Starting Fui application...")
 
-# Enable multi-threading
+# Set environment variables
+ENV["GTK_DEBUG"] = "all"
+
+# Enable multi-threading if not already set
 if !haskey(ENV, "JULIA_NUM_THREADS")
     ENV["JULIA_NUM_THREADS"] = "4"
 end
 
-# Core imports
-using Gtk
-using JSON3
-using Dates
-using Mmap
-using ThreadPools
-using Base.Threads: @spawn, @threads
-using Base: @kwdef
+# Set up logging
+ENV["JULIA_DEBUG"] = "all"
+global_logger(ConsoleLogger(stderr, Logging.Debug))
 
-# First include the base utility modules others depend on
-include("utils/safety.jl")
-include("debug/xdbg.jl")
-include("utils/file_ops.jl") 
-include("utils/compression.jl")
+println("Loading UI module...")
 
-# Then include modules that depend on the utility modules
-include("config.jl")
-include("data/parser.jl")
-include("data/converter.jl")
-include("ui/components.jl")
-include("ui/animations.jl") # Include animations before layout and handlers
-include("net/autoupdate.jl")
-include("ui/layout.jl")
-include("ui/handlers.jl")
+# Define UI module
+module UI
+    using Gtk
+    using Logging
+    
+    println("Loading UI components...")
+    # First load components as they are used by other modules
+    include("ui/components.jl")
+    
+    println("Loading CSV generator...")
+    # Then load csv_generator which includes parser and converter
+    include("ui/csv_generator.jl")
+    
+    println("Loading UI handlers...")
+    # Then load handlers which uses components and csv_generator
+    include("ui/handlers.jl")
+    
+    println("Loading UI layout...")
+    # Finally load layout which depends on components and handlers
+    include("ui/layout.jl")
+    
+    export UIComponents, UILayout, UIHandlers, CSVGenerator
+end
 
-# Import sub-modules with explicit naming to avoid conflicts
-using .Safety
-using .XDebug
-using .FileOps
-using .Compression
-using .Config
-using .Parser
-using .Converter
-import .UIComponents as Components  # Renamed to avoid conflicts
-import .UILayout as Layout
-import .UIHandlers as Handlers
-import .UIAnimations as Animations  # Renamed for consistency
-import .AutoUpdate as Update  # Renamed for consistency
+# Import UI module
+using .UI
 
-gtk_version = ccall((:gtk_get_major_version, Gtk.libgtk), Cint, ())
-@info "GTK Version: $gtk_version"
+export run_app
+
+println("Fui module loading completed.")
 
 """
-    run_application()
+    run_app()
 
-Main entry point for the MagicRay CAD/CSV Generator application.
-Initializes the UI, sets up event handlers, and starts the application.
+Initialize and run the main application.
 """
-function run_application()
-    # Initialize logger
-    logger = XDebug.Logger("MagicRay", true)
-    XDebug.log_info(logger, "Application starting...")
+function run_app()
+    println("Starting application initialization...")
+    @info "Application starting..."
+    
+    # Load default configuration if not exists
+    default_config = Dict{String, Any}(
+        "Last" => Dict{String, Any}(
+            "BOMSplitPath" => "Click to select BOM",
+            "PINSCadPath" => "Click to select PINS",
+            "OptionClient" => "",
+            "ProgramEntry" => ""
+        ),
+        "Clients" => ["GEC", "PBEH", "AGI", "NER", "SEA4", "SEAH", "ADVA", "NOK"],
+        "Language" => "data/lang/en.json"
+    )
+    
+    println("Loading configuration...")
+    # Load or create config
+    config_path = joinpath("data", "config.json")
+    config = if !isfile(config_path)
+        println("Creating new config file at: $config_path")
+        mkpath(dirname(config_path))
+        open(config_path, "w") do io
+            JSON3.write(io, default_config)
+        end
+        default_config
+    else
+        println("Loading existing config from: $config_path")
+        JSON3.read(read(config_path, String), Dict)
+    end
+    
+    @info "Configuration loaded"
+    
+    # Initialize GTK
+    println("Initializing GTK...")
+    @info "Initializing GTK..."
     
     try
-        # Load configuration
-        config = Config.load_config()
-        XDebug.log_info(logger, "Configuration loaded successfully")
+        # Create main window
+        println("Creating main window...")
+        window = GtkWindow("Generate .CAD/CSV for MagicRa...", 500, 300)
+        GAccessor.resizable(window, false)
         
-        # Get language code directly
-        lang_code = get(config, "Language", "assets/lang/en.json")
-        lang_match = match(r"([^/\\]+)\.json$", lang_code)
-        if lang_match !== nothing
-            lang_code = lang_match.captures[1]
-        else
-            lang_code = "en"
+        # Create main layout
+        println("Creating main layout...")
+        components = UILayout.create_main_layout()
+        
+        # Add window to components
+        components["window"] = window
+        # Add config to components dictionary
+        components["config"] = config
+        
+        println("Adding components to window...")
+        push!(window, components["container"])
+        
+        # Set up event handlers
+        println("Setting up event handlers...")
+        UIHandlers.setup_event_handlers(components)
+        
+        # Set up window close handler
+        println("Setting up window close handler...")
+        signal_connect(window, :destroy) do widget
+            println("Window close requested...")
+            Gtk.gtk_quit()
         end
-        langt = typeof(lang_code)
-        XDebug.log_info(logger, "Using language code: $(lang_code) type : $(langt)")
         
-        # Load language directly without using Config.load_language
-        language = load_language_directly(lang_code)
+        # Show window and all its children
+        println("Showing window...")
+        showall(window)
         
-        @info "Language loaded successfully"
-        @info "Building UI interface"
-        XDebug.log_info(logger, "Language loaded successfully")
-        
-        # Build UI
-        XDebug.log_info(logger, "Building UI interface")
-        ui_components = Layout.build_interface(config, language)
-        XDebug.log_info(logger, "UI built successfully")
-        
-        # Setup event handlers
-        Handlers.setup_event_handlers(ui_components, config, language, logger)
-        XDebug.log_info(logger, "Event handlers configured")
-        
-        # Play startup sound
-        Animations.play_sound("startup")
-        
-        # Check for updates in background
-        @spawn Update.check_for_updates(config, ui_components)
-        
-        # Show main window (with safe fade-in animation if supported)
-        main_window = ui_components.window
-        # Make sure all child widgets are visible first
-        try
-            # Try to fade in, but continue even if animation fails
-            Animations.fade_in(main_window)
-        catch e
-            # If animation fails, ensure window is visible at least
-            ccall((:gtk_widget_set_visible, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint), main_window, true)
-            ccall((:gtk_widget_set_opacity, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cdouble), main_window, 1.0)
-            XDebug.log_warning(logger, "Window animation failed: $e")
-        end
-        XDebug.log_info(logger, "Application window displayed")
+        println("Starting GTK main loop...")
+        @info "Starting GTK main loop..."
         
         # Start GTK main loop
-        if main_window.handle !== C_NULL
-            XDebug.log_info(logger, "Starting GTK main loop")
-            Gtk.gtk_main()
-        end
+        println("Running GTK main loop...")
+        Gtk.gtk_main()
         
-        XDebug.log_info(logger, "Application closed normally")
-        return 0
+        println("Application initialization completed.")
+        return window
     catch e
-        XDebug.log_critical(logger, "Fatal error in application: $e")
-        XDebug.log_backtrace(logger)
-        return 1
+        @error "Error during application initialization" exception=(e, catch_backtrace())
+        rethrow(e)
     end
 end
 
-"""
-    load_language_directly(lang_code::String)
-
-Direct implementation of language loading without using Config module.
-
-# Arguments
-- `lang_code::String`: Language code (e.g., "en")
-
-# Returns
-- Language dictionary
-"""
-function load_language_directly(lang_code::AbstractString)
-    # Convert to String if it's not already
-    code = string(lang_code)
-    
-    # Define the search paths for language files
-    locations = [
-        joinpath("assets", "lang", "$(code).json"),
-        joinpath("data", "lang", "$(code).json"),
-        "$(code).json"
-    ]
-    
-    for path in locations
-        if isfile(path)
-            try
-                # Open file and read content with encoding handling
-                content = read(path, String)
-                
-                # Check for and remove BOM if present
-                if startswith(content, "\ufeff")
-                    content = content[4:end]  # Strip BOM
-                end
-                
-                # Try to parse the JSON content
-                return JSON3.read(content, Dict{String, Any})
-            catch e
-                @warn "Failed to load language file $path: $e"
-            end
-        end
-    end
-    
-    # Fallback to default dictionary
-    @warn "Could not load language file for '$code', using defaults"
-    return get_default_language_dict()
-end
-
-"""
-    get_default_language_dict()
-
-Returns a default language dictionary as fallback when language loading fails.
-"""
-function get_default_language_dict()
-    return Dict{String, Any}(
-        "Buttons" => Dict{String, Any}(
-            "Generate" => "Generate .CAD/CSV",
-            "Cancel" => "Cancel",
-            "Yes" => "Yes",
-            "No" => "No",
-            "Load" => "Load",
-            "Save" => "Save",
-            "Add" => "Add",
-            "Del" => "Del",
-            "BOMSplitPath" => "Click to select BOMSPLIT",
-            "PINSCadPath" => "Click to select PINCAD"
-        ),
-        "Labels" => Dict{String, Any}(
-            "BOMSplit" => "Click to select BOM",
-            "PINSCad" => "Click to select PINS",
-            "Client" => "Client",
-            "ProgramName" => "Program Name"
-        ),
-        "Errors" => Dict{String, Any}(
-            "FileMissing" => "File missing: %s",
-            "InvalidEntry" => "Invalid entry detected"
-        )
-    )
-end
-
-# Provide command-line execution functionality
-if abspath(PROGRAM_FILE) == @__FILE__
-    exit(run_application())
-end
+# Run the application when the module loads
+println("Calling run_app()...")
+window = run_app()
 
 end # module

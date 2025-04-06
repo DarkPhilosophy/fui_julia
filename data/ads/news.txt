@@ -1,0 +1,4 @@
+New feature: Unicode support for file paths
+Latest update: Improved file selection dialog
+Coming soon: Enhanced client management system
+Stay tuned for more updates and improvements 

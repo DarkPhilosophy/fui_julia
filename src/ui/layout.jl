@@ -1,428 +1,290 @@
 ﻿module UILayout
 
-export build_interface, UIComponents
-
 using Gtk
-using ..XDebug
-using ..Config
-import ..UIComponents as Components
-import ..UIAnimations as Animations
+using ..UIComponents
+using ..UIHandlers
 
-# Constants
-const ORIGINAL_WIDTH = 557
+println("UILayout module loading...")
+
+export create_main_layout
+
+const ORIGINAL_WIDTH = 500
 const ORIGINAL_HEIGHT = 300
-const CONSOLE_WIDTH = 520
+const CONSOLE_WIDTH = 300
 
 """
-    UIComponents
+    create_main_layout()
 
-Structure containing all UI components and their relationships.
+Create the main application layout.
 """
-mutable struct UIComponents
-    window::GtkWindowLeaf
-    css_provider::GtkCssProviderLeaf
-    box_main::GtkBoxLeaf
+function create_main_layout()
+    println("Creating main window components...")
     
-    # Header area
-    header_box::GtkBoxLeaf
-    about_label::GtkLabelLeaf
+    # Create main container
+    main_container = GtkBox(:v)
+    set_gtk_property!(main_container, :spacing, 10)
+    set_gtk_property!(main_container, :margin_start, 10)
+    set_gtk_property!(main_container, :margin_end, 10)
+    set_gtk_property!(main_container, :margin_top, 10)
+    set_gtk_property!(main_container, :margin_bottom, 10)
     
-    # Main components
-    bomsplit::Dict{String, Any}
-    pincad::Dict{String, Any}
-    client::Dict{String, Any}
-    program::Dict{String, Any}
+    # Create about section
+    about_label = GtkLabel("by adalbertalexadru.ungureanu@flex.com")
+    set_gtk_property!(about_label, :width_request, 450)
+    set_gtk_property!(about_label, :height_request, 40)
+    set_gtk_property!(about_label, :halign, Gtk.GtkAlign.START)
     
-    # Bottom area
-    generate_button::GtkButtonLeaf
-    progress_bar::GtkProgressBarLeaf
-    progress_label::GtkLabelLeaf
+    # Create file selection components
+    bomsplit_component = UIComponents.create_file_selection_component("BOM Split File", "")
+    pincad_component = UIComponents.create_file_selection_component("PINS File", "")
     
-    # Language selector
-    language::Dict{String, Any}
+    # Create client component
+    client_component = UIComponents.create_client_selector()
     
-    # Debug console
-    console::Dict{String, Any}
+    # Create program name component - custom version without button and cm label
+    program_component = create_program_name_component("Program Name")
     
-    # Configuration reference
-    config::Dict{String, Any}
+    # Create language selector
+    language_component = UIComponents.create_language_selector()
     
-    # Animations container
-    animations::Dict{String, Any}
-end
-
-"""
-    style_context_add_provider(context, provider, priority)
-
-Add provider to style context with direct ccall for maximum compatibility.
-"""
-function style_context_add_provider(context, provider, priority::Integer)
-    ccall((:gtk_style_context_add_provider, Gtk.libgtk), Cvoid,
-          (Ptr{Nothing}, Ptr{Gtk.GObject}, Cuint),
-          context, provider, Cuint(priority))
-end
-
-"""
-    build_interface(config::Dict{String, Any}, language::Dict{String, Any})
-
-Build the complete UI layout with components.
-"""
-function build_interface(config::Dict{String, Any}, language::Dict{String, Any})
-    # Check GTK version
-    gtk_version = ccall((:gtk_get_major_version, Gtk.libgtk), Cint, ())
-    println("[ Info] GTK Version: $gtk_version")
-
-    # Create main window
-    window = GtkWindow()
+    # Create generate button
+    generate_button = GtkButton("GENERATE .CAD/CSV", name="Generate")
+    set_gtk_property!(generate_button, :width_request, 200)
+    set_gtk_property!(generate_button, :height_request, 40)
     
-    # Ensure window has proper opacity and visibility from the start
-    ccall((:gtk_window_set_title, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Ptr{UInt8}), window, "MagicRay CAD/CSV Generator")
-    ccall((:gtk_window_set_default_size, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint, Cint), window, ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
-    ccall((:gtk_window_set_position, Gtk.libgtk), Cvoid, (Ptr{Gtk.GObject}, Cint), window, 1) # GTK_WIN_POS_CENTER = 1
-    
-    # Apply CSS styling - corrected for GTK3 in Julia
-    css_provider = GtkCssProvider()
-    css_data = """
-    .main-window {
-        background-color: #f5f5f5;
-        padding: 10px;
-    }
-    
-    label {
-        font-size: 14px;
-    }
-    
-    entry {
-        font-size: 14px;
-        padding: 4px;
-        border-radius: 4px;
-    }
-    
-    entry:focus {
-        border-color: #3D85C6;
-    }
-    
-    button {
-        font-size: 14px;
-        background-color: #3D85C6;
-        color: white;
-        border-radius: 4px;
-        padding: 4px 8px;
-    }
-    
-    button:hover {
-        background-color: #2C6DA3;
-    }
-    
-    .generate-button {
-        font-size: 16px;
-        font-weight: bold;
-        padding: 8px;
-    }
-    
-    progressbar {
-        min-height: 20px;
-    }
-    
-    progressbar trough {
-        background-color: #000000;
-        border-radius: 4px;
-    }
-    
-    progressbar progress {
-        background-color: #3D85C6;
-        border-radius: 4px;
-    }
-    
-    .success-progress progress {
-        background-color: #097969;
-    }
-    
-    .error-progress progress {
-        background-color: #FF5733;
-    }
-    
-    .console-text {
-        font-family: monospace;
-        font-size: 12px;
-    }
-    
-    .header-label {
-        font-size: 16px;
-        font-weight: bold;
-    }
-    
-    .clickable-label:hover {
-        text-decoration: underline;
-    }
-    
-    .about-label {
-        font-size: 10px;
-        color: #666;
-    }
-    
-    .client-box entry {
-        min-width: 80px;
-    }
-    
-    .language-box {
-        margin-top: 20px;
-    }
-    """
-    
-    # Load CSS data into the provider - direct ccall for maximum compatibility
-    try
-        ccall((:gtk_css_provider_load_from_data, Gtk.libgtk), Bool, 
-              (Ptr{Gtk.GObject}, Ptr{UInt8}, Csize_t, Ptr{Nothing}), 
-              css_provider, css_data, length(css_data), C_NULL)
-        
-        # Apply CSS to window's style context
-        style_context = ccall((:gtk_widget_get_style_context, Gtk.libgtk), Ptr{Nothing},
-                            (Ptr{Gtk.GObject},), window)
-        style_context_add_provider(style_context, css_provider, 600)  # GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
-    catch e
-        @warn "Could not apply CSS: $e"
-    end
-
-    # Create the main vertical box container
-    box_main = GtkBox(:v)
-
-    # Add the box to the window
-    push!(window, box_main)
-
-    # Set margin for the box
-    Gtk.set_gtk_property!(box_main, :border_width, 10)
-    
-    # Header area
-    header_box = GtkBox(:h)
-    about_label = GtkLabel("by adalbertalexandru.ungureanu@flex.com")
-    Gtk.set_gtk_property!(about_label, :name, "about-label")
-    push!(header_box, about_label)
-    
-    # Add header to main box
-    push!(box_main, header_box)
-    Gtk.set_gtk_property!(header_box, :margin_bottom, 20)
-    
-    # Create component groups - using Components module functions
-    bomsplit = Components.create_labeled_component(
-        get(get(language, "Labels", Dict()), "BOMSplit", "Select BOM File"),
-        get(get(config, "Last", Dict()), "BOMSplitPath", "Click to select BOM"),
-        true
-    )
-    
-    pincad = Components.create_labeled_component(
-        get(get(language, "Labels", Dict()), "PINSCad", "Select PINS File"),
-        get(get(config, "Last", Dict()), "PINSCadPath", "Click to select PINS"),
-        true
-    )
-    
-    # Get clients as array of strings
-    client_string = get(config, "Clients", "GEC,PBEH,AGI,NER,SEA4,SEAH,ADVA,NOK")
-    
-    # Properly handle clients - convert from SubString to String if needed
-    clients = if typeof(client_string) <: AbstractString 
-        # Split returns SubString{String} which we convert to String
-        map(String, split(client_string, ","))
-    else
-        # If it's already a collection, ensure all elements are String
-        map(String, client_string)
-    end
-    
-    client = Components.create_client_component(
-        get(get(language, "Labels", Dict()), "Client", "Client"),
-        clients,
-        String(get(get(config, "Last", Dict()), "OptionClient", ""))
-    )
-    
-    program = Components.create_labeled_component(
-        get(get(language, "Labels", Dict()), "ProgramName", "Program Name"),
-        get(get(config, "Last", Dict()), "ProgramEntry", ""),
-        false
-    )
-    
-    # Add components to main box
-    push!(box_main, bomsplit["container"])
-    push!(box_main, pincad["container"])
-    push!(box_main, client["container"])
-    push!(box_main, program["container"])
-    
-    # Add spacing between components
-    Gtk.set_gtk_property!(bomsplit["container"], :margin_bottom, 10)
-    Gtk.set_gtk_property!(pincad["container"], :margin_bottom, 10)
-    Gtk.set_gtk_property!(client["container"], :margin_bottom, 10)
-    Gtk.set_gtk_property!(program["container"], :margin_bottom, 20)
-    
-    # Generate button
-    generate_button = GtkButton(get(get(language, "Buttons", Dict()), "Generate", "Generate .CAD/CSV"))
-    Gtk.set_gtk_property!(generate_button, :name, "generate-button")
+    # Create generate button container for centering
     generate_box = GtkBox(:h)
+    set_gtk_property!(generate_box, :halign, Gtk.GtkAlign.CENTER)
     push!(generate_box, generate_button)
-    Gtk.set_gtk_property!(generate_button, :halign, Gtk.GConstants.GtkAlign.CENTER)  # Center align
-    Gtk.set_gtk_property!(generate_button, :hexpand, true)
-    push!(box_main, generate_box)
-    Gtk.set_gtk_property!(generate_box, :margin_bottom, 20)
     
-    # Progress bar area
-    progress_bar = GtkProgressBar()
-    # FIXED: Using property setting instead of direct field access
-    Gtk.set_gtk_property!(progress_bar, :fraction, 0.0)
-    progress_label = GtkLabel("0%")
+    # Create progress component
+    progress_component = UIComponents.create_progress_component()
     
-    progress_box = GtkBox(:h)
-    push!(progress_box, progress_bar)
-    push!(progress_box, progress_label)
-    Gtk.set_gtk_property!(progress_bar, :hexpand, true)
-    Gtk.set_gtk_property!(progress_label, :margin_start, 10)
+    # Create exit button
+    exit_button = GtkButton("Exit", name="Exit")
+    set_gtk_property!(exit_button, :width_request, 115)
+    set_gtk_property!(exit_button, :height_request, 30)
     
-    push!(box_main, progress_box)
+    # Create exit button container
+    exit_box = GtkBox(:h)
+    set_gtk_property!(exit_box, :halign, Gtk.GtkAlign.END)
+    push!(exit_box, exit_button)
     
-    # Language selector
-    language_box = GtkBox(:h)
-    language_label = GtkLabel("Language:")
-    language_combo = GtkComboBoxText(false)  # Not editable
+    println("Adding components to main container...")
     
-    # Find available language files
-    lang_files = String[]
-    lang_dir = joinpath(Config.get_assets_dir(), "lang")
-    if isdir(lang_dir)
-        for file in readdir(lang_dir)
-            if endswith(file, ".json")
-                push!(lang_files, replace(file, ".json" => ""))
-            end
-        end
-    end
+    # Add all components to main container
+    push!(main_container, about_label)
+    push!(main_container, bomsplit_component["container"])
+    push!(main_container, pincad_component["container"])
+    push!(main_container, client_component["container"])
+    push!(main_container, program_component["container"])
+    push!(main_container, language_component["container"])
+    push!(main_container, generate_box)
+    push!(main_container, progress_component["container"])
+    push!(main_container, exit_box)
     
-    # If no language files found, add default en
-    if isempty(lang_files)
-        push!(lang_files, "en")
-    end
+    println("Creating components dictionary...")
     
-    # Populate language options
-    for lang_code in lang_files
-        push!(language_combo, lang_code)
-    end
-    
-    # Set current language
-    current_lang = Config.get_language_code(config)
-    current_idx = findfirst(==(current_lang), lang_files)
-    if current_idx !== nothing
-        Gtk.set_gtk_property!(language_combo, :active, current_idx - 1)
-    else
-        Gtk.set_gtk_property!(language_combo, :active, 0)  # Default to first
-    end
-    
-    language_icon = GtkLabel("🌐")
-    
-    push!(language_box, language_label)
-    push!(language_box, language_icon)
-    push!(language_box, language_combo)
-    Gtk.set_gtk_property!(language_combo, :margin_start, 5)
-    
-    Gtk.set_gtk_property!(language_box, :name, "language-box")
-    Gtk.set_gtk_property!(language_box, :halign, Gtk.GConstants.GtkAlign.END)  # Right align
-    
-    push!(box_main, language_box)
-    
-    # Debug console (initially hidden)
-    console_button = GtkButton("▶")
-    console_text = GtkTextView()
-    Gtk.set_gtk_property!(console_text, :name, "console-text")
-    Gtk.set_gtk_property!(console_text, :editable, false)
-    Gtk.set_gtk_property!(console_text, :cursor_visible, false)
-    
-    console_scroll = GtkScrolledWindow()
-    push!(console_scroll, console_text)
-    
-    console_label = GtkLabel("DEBUG CONSOLE")
-    Gtk.set_gtk_property!(console_label, :name, "header-label")
-    
-    console_header = GtkBox(:h)
-    push!(console_header, console_label)
-    Gtk.set_gtk_property!(console_label, :halign, Gtk.GConstants.GtkAlign.CENTER)
-    Gtk.set_gtk_property!(console_label, :hexpand, true)
-    
-    console_box = GtkBox(:v)
-    push!(console_box, console_header)
-    push!(console_box, console_scroll)
-    Gtk.set_gtk_property!(console_scroll, :vexpand, true)
-    
-    # Hidden dev area for easter egg
-    console_dev = GtkBox(:h)
-    
-    # Create UI components structure
-    components = UIComponents(
-        window,
-        css_provider,
-        box_main,
-        header_box,
-        about_label,
-        bomsplit,
-        pincad,
-        client,
-        program,
-        generate_button,
-        progress_bar,
-        progress_label,
-        Dict{String, Any}("label" => language_label, "combo" => language_combo, "icon" => language_icon, "container" => language_box),
-        Dict{String, Any}("button" => console_button, "text" => console_text, "scroll" => console_scroll, 
-             "label" => console_label, "container" => console_box, "header" => console_header,
-             "visible" => false, "dev" => console_dev),
-        config,
-        Dict{String, Any}()
+    # Create components dictionary
+    components = Dict{String, Any}(
+        "container" => main_container,
+        "about" => Dict("label" => about_label),
+        "bomsplit" => bomsplit_component,
+        "pincad" => pincad_component,
+        "program" => program_component,
+        "client" => client_component,
+        "language" => language_component,
+        "generate" => Dict("button" => generate_button),
+        "progress" => progress_component,
+        "exit" => Dict("button" => exit_button)
     )
     
-    # Make components draggable
-    set_drag_destination(bomsplit["input"])
-    set_drag_destination(pincad["input"])
-    
-    # Hide console button unless debug mode is enabled
-    debug_enabled = get(config, "Debug", false)
-    if !debug_enabled
-        Gtk.set_gtk_property!(console_button, :visible, false)
-    end
-    
-    # Set window to be visible
-    Gtk.showall(window)
-    
+    println("Layout creation completed.")
     return components
 end
 
 """
-    set_drag_destination(widget::GtkWidget)
+    create_header_component()
 
-Make a widget a valid drag destination for files using direct ccall approach.
+Create the header component.
 """
-function set_drag_destination(widget)
-    try
-        # Direct approach without GtkTargetEntry
-        # Set widget as a drag destination for all kinds of data
-        ccall((:gtk_drag_dest_set, Gtk.libgtk), Cvoid,
-              (Ptr{Gtk.GObject}, Cint, Ptr{Nothing}, Cint, Cint),
-              widget, 3, # GTK_DEST_DEFAULT_ALL = 3
-              C_NULL, 0, # No targets specified, accept any
-              1) # GDK_ACTION_COPY = 1
-        
-        # Connect to the drag-data-received signal
-        signal_connect(widget, "drag-data-received") do widget, context, x, y, data, info, time
-            # Converting drag data to file path
-            uris = split(unsafe_string(convert(Ptr{UInt8}, data.data)), "\r\n")
-            if !isempty(uris)
-                uri = uris[1]
-                # Convert URI to file path
-                if startswith(uri, "file://")
-                    path = uri[8:end]
-                    # On Windows, convert /C:/path to C:/path
-                    if Sys.iswindows() && startswith(path, "/")
-                        path = path[2:end]
-                    end
-                    Gtk.set_gtk_property!(widget, :text, path)
-                end
-            end
-            return nothing
-        end
-    catch e
-        @warn "Could not set up drag and drop for widget: $e"
-    end
+function create_header_component()
+    # Create container
+    container = GtkBox(:h)
+    set_gtk_property!(container, :spacing, 5)
+    set_gtk_property!(container, :margin_start, 10)
+    set_gtk_property!(container, :margin_end, 10)
+    set_gtk_property!(container, :margin_top, 5)
+    set_gtk_property!(container, :margin_bottom, 5)
+    
+    # Create label
+    label = GtkLabel("by adalbertalexandru.ungureanu@flex.com")
+    set_gtk_property!(label, :halign, Gtk.GtkAlign.START)
+    set_gtk_property!(label, :hexpand, true)
+    
+    # Add components to container
+    push!(container, label)
+    
+    return container
+end
+
+"""
+    create_file_selection_component(label_text::String, file_path::String)
+
+Create a file selection component.
+"""
+function create_file_selection_component(label_text::String, file_path::String)
+    # Create container
+    container = GtkBox(:h)
+    set_gtk_property!(container, :spacing, 5)
+    set_gtk_property!(container, :margin_start, 10)
+    set_gtk_property!(container, :margin_end, 10)
+    set_gtk_property!(container, :margin_top, 5)
+    set_gtk_property!(container, :margin_bottom, 5)
+    
+    # Create label
+    label = GtkLabel(label_text)
+    set_gtk_property!(label, :width_request, 100)
+    set_gtk_property!(label, :halign, Gtk.GtkAlign.START)
+    
+    # Create input
+    input = GtkEntry()
+    set_gtk_property!(input, :text, file_path)
+    set_gtk_property!(input, :hexpand, true)
+    
+    # Create button
+    button = GtkButton()
+    set_gtk_property!(button, :width_request, 30)
+    set_gtk_property!(button, :height_request, 30)
+    
+    # Add components to container
+    push!(container, label)
+    push!(container, input)
+    push!(container, button)
+    
+    return Dict{String, Any}(
+        "container" => container,
+        "label" => label,
+        "input" => input,
+        "button" => button
+    )
+end
+
+function create_main_window()
+    window = GtkWindow("Fui", 800, 600)
+    set_gtk_property!(window, :title, "Fui")
+    set_gtk_property!(window, :window_position, Gtk.GtkWindowPosition.CENTER)
+    set_gtk_property!(window, :default_width, 800)
+    set_gtk_property!(window, :default_height, 600)
+    
+    # Apply dark theme
+    css_provider = GtkCssProvider()
+    css = """
+    window {
+        background-color: #2d2d2d;
+        color: #ffffff;
+    }
+    entry {
+        background-color: #3d3d3d;
+        color: #ffffff;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+    entry:focus {
+        background-color: #4a4a4a;
+        box-shadow: 0 0 3px rgba(66, 135, 245, 0.8);
+    }
+    button {
+        background-color: #4d4d4d;
+        color: #ffffff;
+        border-radius: 4px;
+        transition: all 0.2s ease; 
+    }
+    button:hover {
+        background-color: #5d5d5d;
+        transform: translateY(-2px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    }
+    button:active {
+        background-color: #3d3d3d;
+        transform: translateY(1px);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    combobox {
+        background-color: #3d3d3d;
+        color: #ffffff;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+    combobox entry {
+        background-color: #3d3d3d;
+        color: #ffffff;
+    }
+    combobox:hover {
+        background-color: #4a4a4a;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    progressbar {
+        background-color: #3d3d3d;
+        color: #ffffff;
+        border-radius: 4px;
+    }
+    progressbar trough {
+        background-color: #3d3d3d;
+        border-radius: 4px;
+    }
+    progressbar progress {
+        background-color: #4285f4;
+        border-radius: 4px;
+    }
+    label {
+        color: #ffffff;
+    }
+    """
+    Gtk.GAccessor.data(css_provider, css)
+    GtkStyleContext.add_provider_for_screen(
+        Gtk.GAccessor.screen(window),
+        css_provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+    
+    return window
+end
+
+"""
+    create_program_name_component(label_text::String)
+
+Create a program name input component with just a label and entry field (no button or unit label).
+"""
+function create_program_name_component(label_text::String)
+    # Create container
+    container = GtkBox(:h)
+    set_gtk_property!(container, :spacing, 5)
+    set_gtk_property!(container, :margin_start, 10)
+    set_gtk_property!(container, :margin_end, 10)
+    set_gtk_property!(container, :margin_top, 5)
+    set_gtk_property!(container, :margin_bottom, 5)
+    
+    # Create label with a name based on label_text for translation lookup
+    label_name_key = replace(label_text, " " => "")
+    label = GtkLabel(label_text, name=label_name_key)
+    set_gtk_property!(label, :width_request, 105)
+    set_gtk_property!(label, :halign, Gtk.GtkAlign.START)
+    
+    # Create input with wider width
+    input = GtkEntry()
+    set_gtk_property!(input, :hexpand, true)
+    set_gtk_property!(input, :width_request, 300) # Make it wider
+    
+    # Add components to container
+    push!(container, label)
+    push!(container, input)
+    
+    return Dict{String, Any}(
+        "container" => container,
+        "label" => label,
+        "input" => input
+    )
 end
 
 end # module

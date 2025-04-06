@@ -1,0 +1,15 @@
+{
+    "Labels": {
+        "BOMSplit": "Selectați fișierul BOM",
+        "PINSCad": "Selectați fișierul PINS",
+        "ProgramName": "Nume program",
+        "Client": "Clientul"
+    },
+    "Buttons": {
+        "Generate": "Generează .CAD/CSV",
+        "Add": "Adaugă",
+        "Del": "Șterge",
+        "BOMSplitPath": "Clic pentru a selecta fișierul BOM",
+        "PINSCadPath": "Clic pentru a selecta fișierul PINS"
+    }
+} 

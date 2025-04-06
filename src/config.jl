@@ -1,400 +1,222 @@
-﻿module Config
+﻿"""
+    Config
+
+Module for handling configuration and language settings.
+"""
+module Config
+
+using JSON3
+using ..XDebug
+using ..FileOps
 
 export load_config, save_config, load_language, get_language_code, get_assets_dir
 
-using JSON3
-using ..Safety
-using ..FileOps
-
-# Default configuration
-const DEFAULT_CONFIG = Dict(
-    "Last" => Dict(
-        "BOMSplitPath" => "Click to select BOM",
-        "PINSCadPath" => "Click to select PINS",
-        "OptionClient" => "",
-        "ProgramEntry" => ""
-    ),
-    "Clients" => "GEC,PBEH,AGI,NER,SEA4,SEAH,ADVA,NOK",
-    "Language" => "assets/lang/en.json",
-    "Version" => "22",
-    "UpdateSources" => [
-        "//timnt779/MagicRay/Backup/Software programare/SW_FUI/fui/update.txt",
-        "//timnt757/Tools/scripts/M2/fui/update.txt"
-    ],
-    "Debug" => false
-)
+# Create a logger instance
+const logger = XDebug.create_logger()
 
 """
-    load_config(config_path::String="fui.ini")
+    get_assets_dir()
 
-Load the application configuration from a file.
-If the file doesn't exist, it creates a default configuration.
-
-# Arguments
-- `config_path::String`: Path to the configuration file (default: "fui.ini")
-
-# Returns
-- `Dict{String, Any}`: Configuration dictionary
+Get the assets directory path.
 """
-function load_config(config_path::String="fui.ini")
-    # Check if config file exists
-    if !isfile(config_path)
-        # Create default config
-        save_config(DEFAULT_CONFIG, config_path)
-        return deepcopy(DEFAULT_CONFIG)
-    end
-    
-    # Load existing config
-    config = Safety.safe_operation(
-        () -> begin
-            # Parse INI file
-            config = Dict{String, Any}()
-            current_section = ""
-            
-            for line in eachline(config_path)
-                # Remove comments and trim whitespace
-                line = strip(split(line, '#')[1])
-                if isempty(line)
-                    continue
-                end
-                
-                # Check for section header
-                section_match = match(r"^\[(.*)\]$", line)
-                if section_match !== nothing
-                    current_section = section_match.captures[1]
-                    config[current_section] = Dict{String, Any}()
-                    continue
-                end
-                
-                # Parse key-value pair
-                key_value_match = match(r"^([^=]+)=(.*)$", line)
-                if key_value_match !== nothing
-                    key = strip(key_value_match.captures[1])
-                    value = strip(key_value_match.captures[2])
-                    
-                    # Remove quotes if present
-                    if startswith(value, "\"") && endswith(value, "\"")
-                        value = value[2:end-1]
-                    end
-                    
-                    # Parse value as array if it contains commas
-                    if occursin(',', value) && !occursin('=', value) && !occursin('[', value)
-                        if current_section == ""
-                            config[key] = split(value, ',')
-                        else
-                            config[current_section][key] = split(value, ',')
-                        end
-                    else
-                        # Try to parse as boolean
-                        if lowercase(value) == "true"
-                            val = true
-                        elseif lowercase(value) == "false"
-                            val = false
-                        else
-                            # Try to parse as number
-                            try
-                                if occursin('.', value)
-                                    val = parse(Float64, value)
-                                else
-                                    val = parse(Int, value)
-                                end
-                            catch
-                                # Store as string
-                                val = value
-                            end
-                        end
-                        
-                        if current_section == ""
-                            config[key] = val
-                        else
-                            config[current_section][key] = val
-                        end
-                    end
-                end
-            end
-            
-            return config
-        end,
-        (err) -> begin
-            @warn "Error loading config: $err, using defaults"
-            return deepcopy(DEFAULT_CONFIG)
-        end
-    )
-    
-    # Merge with defaults to ensure all keys exist
-    merge_defaults!(config, DEFAULT_CONFIG)
-    
-    return config
+function get_assets_dir()
+    return joinpath(dirname(@__DIR__), "data")
 end
 
 """
-    merge_defaults!(config, defaults)
+    merge_defaults(target::Dict, default::Dict, parent_key::String="")
 
-Merge default values into a configuration dictionary.
-
-# Arguments
-- `config`: Configuration to update (can be any dictionary type)
-- `defaults`: Default values (can be any dictionary type)
-
-# Returns
-- Updated configuration
+Merge default values into a target dictionary.
 """
-function merge_defaults!(config, defaults)
-    # Only proceed if both are dictionary-like
-    if !(config isa AbstractDict) || !(defaults isa AbstractDict)
-        return config
-    end
+function merge_defaults(target::Dict, default::Dict, parent_key::String="")
+    result = copy(target)
     
-    # Continue with the merge logic
-    for (key, value) in defaults
-        if !haskey(config, key)
-            config[key] = deepcopy(value)
-        elseif value isa AbstractDict && config[key] isa AbstractDict
-            merge_defaults!(config[key], value)
+    for (k, v) in default
+        current_key = isempty(parent_key) ? string(k) : parent_key * "." * string(k)
+        
+        if v isa Dict
+            if haskey(result, k) && result[k] isa Dict
+                result[k] = merge_defaults(result[k], v, current_key)
+            else
+                XDebug.log_info(XDebug.get_logger(), "Type mismatch for key: $current_key (expected Dict, got $(typeof(result[k]))), using default", XDebug.CONFIG)
+                result[k] = deepcopy(v)
+            end
+        elseif !haskey(result, k)
+            XDebug.log_info(XDebug.get_logger(), "Adding missing key: $current_key = $v", XDebug.CONFIG)
+            result[k] = deepcopy(v)
+        elseif typeof(result[k]) != typeof(v)
+            XDebug.log_info(XDebug.get_logger(), "Type mismatch for key: $current_key (expected $(typeof(v)), got $(typeof(result[k]))), using default", XDebug.CONFIG)
+            result[k] = deepcopy(v)
         end
     end
     
-    return config
+    return result
 end
 
 """
-    save_config(config::Dict{String, Any}, config_path::String="fui.ini")
+    load_config(default_config::Dict, ini_file::String)
 
-Save the configuration to a file.
-
-# Arguments
-- `config::Dict{String, Any}`: Configuration to save
-- `config_path::String`: Path to the configuration file (default: "fui.ini")
-
-# Returns
-- `Bool`: Success status
+Load and merge configuration with defaults.
 """
-function save_config(config::Dict{String, Any}, config_path::String="fui.ini")
-    return Safety.safe_operation(
-        () -> begin
-            # Ensure directory exists
-            config_dir = dirname(config_path)
-            if !isempty(config_dir) && !isdir(config_dir)
-                mkpath(config_dir)
+function load_config(default_config::Dict, ini_file::String)
+    XDebug.log_info(XDebug.get_logger(), "Starting config load for: $ini_file", XDebug.CONFIG)
+    
+    if !isfile(ini_file)
+        XDebug.log_info(XDebug.get_logger(), "Config file not found, creating: $ini_file", XDebug.CONFIG)
+        save_config = deepcopy(default_config)
+        XDebug.log_info(XDebug.get_logger(), "Saving default config", XDebug.CONFIG)
+        
+        try
+            open(ini_file, "w") do io
+                JSON3.write(io, save_config)
             end
-            
-            # Write config to file
-            open(config_path, "w") do file
-                # Write non-dict values first
+        catch e
+            XDebug.log_error(XDebug.get_logger(), "Failed to save default config: $e", XDebug.ERRORS)
+        end
+        
+        return save_config
+    end
+    
+    try
+        config = open(ini_file, "r") do io
+            JSON3.read(io, Dict)
+        end
+        XDebug.log_info(XDebug.get_logger(), "Loaded config", XDebug.CONFIG)
+        
+        merged_config = merge_defaults(config, default_config)
+        
+        if merged_config != config
+            XDebug.log_info(XDebug.get_logger(), "Saving updated config: $ini_file", XDebug.CONFIG)
+            open(ini_file, "w") do io
+                JSON3.write(io, merged_config)
+            end
+        else
+            XDebug.log_info(XDebug.get_logger(), "No updates needed for: $ini_file", XDebug.CONFIG)
+        end
+        
+        return merged_config
+    catch e
+        XDebug.log_error(XDebug.get_logger(), "Failed to load config file: $ini_file, error: $e", XDebug.ERRORS)
+        return deepcopy(default_config)
+    end
+end
+
+"""
+    save_config(config::Dict{String, Any})
+
+Save configuration to file.
+"""
+function save_config(config::Dict{String, Any})
+    config_path = "config.ini"
+    
+    open(config_path, "w") do f
+        # Write non-section values first
                 for (key, value) in config
-                    if !(value isa Dict)
-                        if value isa Vector
-                            write(file, "$key=$(join(value, ','))\n")
-                        elseif value isa String
-                            write(file, "$key=\"$value\"\n")
-                        else
-                            write(file, "$key=$value\n")
+            if !isa(value, Dict)
+                if isa(value, AbstractString)
+                    println(f, "$key=\"$value\"")
+                else
+                    println(f, "$key=$value")
                         end
                     end
                 end
                 
                 # Write sections
                 for (section, values) in config
-                    if values isa Dict
-                        write(file, "\n[$section]\n")
+            if isa(values, Dict)
+                println(f, "\n[$section]")
                         for (key, value) in values
-                            if value isa Vector
-                                write(file, "$key=$(join(value, ','))\n")
-                            elseif value isa String
-                                write(file, "$key=\"$value\"\n")
-                            else
-                                write(file, "$key=$value\n")
+                    if isa(value, AbstractString)
+                        println(f, "$key=\"$value\"")
+                    else
+                        println(f, "$key=$value")
+                    end
                             end
                         end
                     end
                 end
             end
             
-            return true
-        end,
-        (err) -> begin
-            @warn "Failed to save configuration: $err"
-            return false
-        end
-    )
+"""
+    get_language_code(config::Dict)
+
+Extract language code from configuration.
+"""
+function get_language_code(config::Dict)
+    lang_path = get(config, "Language", "data/lang/en.json")
+    return replace(basename(lang_path), ".json" => "")
 end
 
 """
-    load_language(lang_code::String)
+    load_language(lang_code::String, default_translations::Dict=Dict())
 
-Load a language file.
-
-# Arguments
-- `lang_code::String`: Language code (e.g., "en")
-
-# Returns
-- `Dict{String, Any}`: Language dictionary or empty dict if failed
+Load language file with defaults.
 """
-function load_language(lang_code::String)
-    # Try to find language file in various locations
-    lang_file = nothing
-    locations = [
-        joinpath(get_assets_dir(), "lang", "$(lang_code).json"),  # First check in assets
-        joinpath("assets", "lang", "$(lang_code).json"),          # Then check relative paths
-        joinpath("data", "lang", "$(lang_code).json"),
-        "$(lang_code).json"                                       # Finally check current dir
-    ]
+function load_language(lang_code::String, default_translations::Dict=Dict())
+    XDebug.log_info(XDebug.get_logger(), "Starting language load for code: $lang_code", XDebug.CONFIG)
     
-    # Try each location
-    for path in locations
-        if isfile(path)
-            lang_file = path
-            break
-        end
+    if isempty(lang_code)
+        XDebug.log_error(XDebug.get_logger(), "Invalid language code", XDebug.ERRORS)
+        return default_translations
     end
     
-    # If no file found, try to create default
-    if lang_file === nothing
-        if lang_code == "en"
-            default_path = joinpath(get_assets_dir(), "lang", "$(lang_code).json")
-            # Ensure the directory exists
-            dir_path = dirname(default_path)
-            if !isdir(dir_path)
-                mkpath(dir_path)
+    # Extract language code from path if necessary
+    lang_code = if occursin(".json", lang_code)
+        basename(lang_code)
+        replace(basename(lang_code), ".json" => "")
+    else
+        lang_code
+    end
+    
+    # Validate language code
+    if !occursin(r"^[a-zA-Z]{2}$", lang_code)
+        XDebug.log_error(XDebug.get_logger(), "Invalid language code after extraction: $lang_code", XDebug.ERRORS)
+        return default_translations
+    end
+    
+    lang_file = joinpath(get_assets_dir(), "lang", "$lang_code.json")
+    lang_dir = dirname(lang_file)
+    
+    if !isdir(lang_dir)
+        XDebug.log_info(XDebug.get_logger(), "Creating directory: $lang_dir", XDebug.CONFIG)
+        mkpath(lang_dir)
+    end
+    
+    if !isfile(lang_file)
+        XDebug.log_info(XDebug.get_logger(), "Language file not found: $lang_file", XDebug.CONFIG)
+        
+        try
+            open(lang_file, "w") do io
+                JSON3.write(io, default_translations)
             end
-            
-            # Create default English language file
-            if create_default_english(default_path)
-                lang_file = default_path
-            end
+        catch e
+            XDebug.log_error(XDebug.get_logger(), "Failed to save language file: $lang_file, error: $e", XDebug.ERRORS)
         end
+        
+        return default_translations
     end
     
-    # If we still don't have a file, return empty dict
-    if lang_file === nothing
-        @warn "Language file not found for code: $lang_code"
-        return Dict{String, Any}()
-    end
-    
-    # Load the language file content
-    return Safety.safe_operation(
-        () -> begin
-            content = read(lang_file, String)
-            return JSON3.read(content, Dict{String, Any})
-        end,
-        (err) -> begin
-            @warn "Failed to load language file: $err"
-            return Dict{String, Any}()
-        end
-    )
-end
-
-"""
-    create_default_english(file_path::String)
-
-Create default English language file.
-
-# Arguments
-- `file_path::String`: Path to create file at
-
-# Returns
-- `Bool`: Success status
-"""
-function create_default_english(file_path::String)
-    default_content = """{
-    "Buttons": {
-        "Generate": "Generate .CAD/CSV",
-        "Cancel": "Cancel",
-        "Yes": "Yes",
-        "No": "No",
-        "Load": "Load",
-        "Save": "Save",
-        "Add": "Add",
-        "Del": "Del",
-        "BOMSplitPath": "Click to select BOMSPLIT",
-        "PINSCadPath": "Click to select PINCAD"
-    },
-    "Labels": {
-        "BOMSplit": "Click to select BOM",
-        "PINSCad": "Click to select PINS",
-        "Client": "Client",
-        "ProgramName": "Program Name"
-    },
-    "Errors": {
-        "FileMissing": "File missing: %s",
-        "InvalidEntry": "Invalid entry detected"
-    }
-}"""
-
-    return Safety.safe_operation(
-        () -> begin
-            # Create directory if it doesn't exist
-            dir_path = dirname(file_path)
-            if !isdir(dir_path)
-                mkpath(dir_path)
-            end
-            
-            # Write the content
-            write(file_path, default_content)
-            return true
-        end,
-        (err) -> begin
-            @warn "Failed to create default language file: $err"
-            return false
-        end
-    )
-end
-
-"""
-    get_language_code(config::Dict{String, Any})
-
-Extract the language code from configuration.
-
-# Arguments
-- `config::Dict{String, Any}`: Configuration dictionary
-
-# Returns
-- `String`: Language code
-"""
-function get_language_code(config::Dict{String, Any})
-    lang_path = get(config, "Language", "assets/lang/en.json")
-    
-    # Extract code from path
-    lang_match = match(r"([^/\\]+)\.json$", lang_path)
-    if lang_match !== nothing
-        return lang_match.captures[1]
-    end
-    
-    return "en"  # Default to English
-end
-
-"""
-    get_assets_dir()
-
-Get the path to the assets directory.
-
-# Returns
-- `String`: Assets directory path
-"""
-function get_assets_dir()
-    # Look for the assets directory in various places
-    candidates = [
-        joinpath(dirname(dirname(@__FILE__)), "assets"),  # Standard location
-        "assets",                                         # Current directory
-        joinpath("..", "assets")                          # One level up
-    ]
-    
-    for path in candidates
-        if isdir(path)
-            return abspath(path)
-        end
-    end
-    
-    # If not found, try to create it
     try
-        path = joinpath(dirname(dirname(@__FILE__)), "assets")
-        if !isdir(path)
-            mkpath(path)
+        lang_data = open(lang_file, "r") do io
+            JSON3.read(io, Dict)
         end
-        return abspath(path)
-    catch
-        # Fallback to current directory
-        return "assets"
+        XDebug.log_info(XDebug.get_logger(), "Loaded language data", XDebug.CONFIG)
+        
+        merged_data = merge_defaults(lang_data, default_translations)
+        
+        if merged_data != lang_data
+            XDebug.log_info(XDebug.get_logger(), "Saving updated language file: $lang_file", XDebug.CONFIG)
+            open(lang_file, "w") do io
+                JSON3.write(io, merged_data)
+            end
+        else
+            XDebug.log_info(XDebug.get_logger(), "No updates needed for: $lang_file", XDebug.CONFIG)
+        end
+        
+        return merged_data
+    catch e
+        XDebug.log_error(XDebug.get_logger(), "Failed to load language file: $lang_file, error: $e", XDebug.ERRORS)
+        return default_translations
     end
 end
 

@@ -1,5 +1,7 @@
 ﻿module Compression
 
+__precompile__(false)
+
 export compress_to_base64, decompress_from_base64, decompress_to_file
 
 using CodecZlib
@@ -9,19 +11,30 @@ using ..XDebug
 using ..FileOps
 
 """
-    compress_to_base64(data::Vector{UInt8})
+    compress_to_base64(data::Union{String, Vector{UInt8}})
 
-Compress binary data and encode it as Base64.
+Compress data and encode it as base64.
 
 # Arguments
-- `data::Vector{UInt8}`: Binary data to compress
+- `data::Union{String, Vector{UInt8}}`: Data to compress
 
 # Returns
-- `String`: Base64-encoded compressed data
+- `String`: Base64-encoded compressed data, or `nothing` if an error occurs
 """
-function compress_to_base64(data::Vector{UInt8})
-    compressed = transcode(ZlibCompressor, data)
-    return base64encode(compressed)
+function compress_to_base64(data::Union{String, Vector{UInt8}})
+    try
+        # Convert string to bytes if needed
+        bytes = data isa String ? Vector{UInt8}(data) : data
+        
+        # Compress the data
+        compressed = transcode(ZlibCompressor, bytes)
+        
+        # Encode as base64
+        return base64encode(compressed)
+    catch e
+        XDebug.log_error(XDebug.get_logger(), "Error in compression: $e", XDebug.ERRORS)
+        return nothing
+    end
 end
 
 """
@@ -69,17 +82,28 @@ end
 """
     decompress_from_base64(base64_data::String)
 
-Decode Base64 data and decompress it.
+Decode base64 data and decompress it.
 
 # Arguments
 - `base64_data::String`: Base64-encoded compressed data
 
 # Returns
-- `Vector{UInt8}`: Decompressed binary data
+- `String`: Decompressed data
 """
 function decompress_from_base64(base64_data::String)
-    compressed = base64decode(base64_data)
-    return transcode(ZlibDecompressor, compressed)
+    try
+        # Decode base64
+        compressed = base64decode(base64_data)
+        
+        # Decompress the data
+        decompressed = transcode(ZlibDecompressor, compressed)
+        
+        # Convert back to string
+        return String(decompressed)
+    catch e
+        XDebug.log_error(XDebug.get_logger(), "Error in decompression: $e", XDebug.ERRORS)
+        return nothing
+    end
 end
 
 """

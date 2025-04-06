@@ -1,38 +1,65 @@
 ﻿module FileOps
 
-export with_file, read_file_contents, write_file_contents, file_exists, 
+export withFile, resolveFilePath, read_file_contents, write_file_contents, file_exists, 
        make_directory, get_file_extension, get_file_name, get_directory_contents
 
 using ..Safety
+using ..XDebug
 
 """
-    with_file(path::String, mode::String, operation::Function)
+    withFile(path::String, mode::String, operation::Function)
 
-Safely open and operate on a file, ensuring it's properly closed.
-
-# Arguments
-- `path::String`: Path to the file
-- `mode::String`: File mode ("r" for read, "w" for write, etc.)
-- `operation::Function`: Function that takes a file handle
-
-# Returns
-- Result of the operation
+Safely opens and operates on a file, handling errors.
 """
-function with_file(path::String, mode::String, operation::Function)
-    if !isfile(path) && mode == "r"
-        error("File not found: $path")
+function withFile(path::String, mode::String, operation::Function)
+    @assert !isempty(path) "Invalid file path"
+    @assert !isempty(mode) "Invalid file mode"
+    
+    XDebug.log_info(XDebug.get_logger(), "Opening file: $path", XDebug.FILE_OPS)
+    
+    try
+        open(path, mode) do file
+            XDebug.log_info(XDebug.get_logger(), "Executing operation on file: $path", XDebug.FILE_OPS)
+            result = operation(file)
+            return result === nothing ? true : result
+        end
+    catch e
+        XDebug.log_error(XDebug.get_logger(), "Error in file operation: $e", XDebug.ERRORS)
+        return nothing, string(e)
+    end
+end
+
+"""
+    resolveFilePath(filePath::String, isDirectory::Bool=false)
+
+Resolves a file path relative to the script's directory.
+"""
+function resolveFilePath(filePath::String, isDirectory::Bool=false)
+    scriptDir = dirname(Base.source_path() === nothing ? pwd() : Base.source_path())
+    XDebug.log_info(XDebug.get_logger(), "Resolving $(isDirectory ? "directory" : "file") path: $filePath", XDebug.FILE_OPS)
+    XDebug.log_info(XDebug.get_logger(), "Script directory: $scriptDir", XDebug.FILE_OPS)
+    
+    # Make sure the script directory has a trailing slash
+    scriptDir = endswith(scriptDir, "/") || endswith(scriptDir, "\\") ? scriptDir : scriptDir * "/"
+    
+    # Concatenate the script directory with the file path
+    fullPath = joinpath(scriptDir, filePath)
+    XDebug.log_info(XDebug.get_logger(), "Checking fullPath: $fullPath", XDebug.FILE_OPS)
+    
+    if isDirectory
+        if isdir(fullPath)
+            XDebug.log_info(XDebug.get_logger(), "Directory found in script directory: $fullPath", XDebug.FILE_OPS)
+            return fullPath
+        end
+    else
+        if isfile(fullPath)
+            XDebug.log_info(XDebug.get_logger(), "File found in script directory: $fullPath", XDebug.FILE_OPS)
+            return fullPath
+        end
     end
     
-    return Safety.safe_operation(
-        () -> begin
-            open(path, mode) do file
-                return operation(file)
-            end
-        end,
-        (err) -> begin
-            error("Error operating on file $path: $err")
-        end
-    )
+    XDebug.log_info(XDebug.get_logger(), "$(isDirectory ? "Directory" : "File") not found in script directory, returning: $filePath", XDebug.FILE_OPS)
+    return filePath
 end
 
 """
@@ -50,7 +77,7 @@ Read the entire contents of a file.
 function read_file_contents(path::String, binary::Bool=false)
     mode = binary ? "rb" : "r"
     
-    return with_file(path, mode, file -> begin
+    return withFile(path, mode, file -> begin
         if binary
             return read(file)
         else
@@ -83,7 +110,7 @@ function write_file_contents(path::String, content::Union{String, Vector{UInt8}}
                 mkpath(dir)
             end
             
-            with_file(path, mode, file -> begin
+            withFile(path, mode, file -> begin
                 write(file, content)
             end)
             
